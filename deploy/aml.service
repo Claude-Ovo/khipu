@@ -1,0 +1,16 @@
+[Unit]
+Description=aml-memory (AML Add/Search API)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/srv/aml/app
+EnvironmentFile=/srv/aml/.env
+ExecStart=/srv/aml/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080 --workers 2 --timeout-keep-alive 75
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

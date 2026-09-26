@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+psycopg[binary]>=3.2
+psycopg_pool>=3.2
+pgvector>=0.3
+httpx>=0.27
+pydantic>=2.7
+rank-bm25>=0.2.2
+numpy>=1.26
+tiktoken>=0.7

@@ -1,0 +1,233 @@
+"""Search 侧：意图路由 → 五路召回 → RRF → 后处理（双命中前置、规矩口袋、邻居扩展）→ 装箱。
+门只看相关性；顺序即产品；整条不截断；不造假记忆。"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from datetime import timedelta
+
+import numpy as np
+
+from . import config
+from .db import pool
+from .embed import embed_query
+from .index import Row, UserIndex, get_index
+from .textutil import count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
+
+log = logging.getLogger("aml.search")
+
+_INTENT = [
+    ("latest", re.compile(r"\b(currently|now|nowadays|these days|at the moment|still|latest|current|present)\b|现在|目前|最近|如今", re.I)),
+    ("temporal", re.compile(r"\b(when|how long|how many (days|weeks|months|years)|before|after|first|last|since|until|ago|date|\d{4})\b|什么时候|多久|之前|之后|哪天|哪年", re.I)),
+    ("aggregate", re.compile(r"\b(how many|all|list|which|every|each|what are|name the)\b|有哪些|多少|所有|列出", re.I)),
+    ("who", re.compile(r"\b(who|whose|whom)\b|谁", re.I)),
+]
+
+# 各路在 RRF 里的分量；只有这五路能开门
+_WEIGHTS = {
+    "default":   {"bm25": 1.0, "vector": 1.0, "entity": 0.8, "literal": 1.0, "date": 0.5},
+    "temporal":  {"bm25": 1.2, "vector": 0.9, "entity": 0.7, "literal": 1.0, "date": 1.5},
+    "latest":    {"bm25": 1.0, "vector": 1.0, "entity": 1.0, "literal": 0.8, "date": 0.3},
+    "aggregate": {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.0, "date": 0.5},
+    "who":       {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.2, "date": 0.3},
+}
+_VIRTUAL_RANK = 4  # 实体/字面/日期通道的起始虚拟排名（MemoryConstellations 的做法）
+
+
+_TASK = re.compile(r"^\s*(please\s+)?(write|draft|compose|help me|make|create|plan|recommend|suggest|give me|tell me how|"
+                   r"can you|could you|would you|i need you to|i want you to|let's|any (?:good |other )?(?:suggestions|recommendations|ideas))\b"
+                   r"|帮我|请你|给我写|替我|帮忙|推荐", re.I)
+_FACTUAL = re.compile(r"^\s*(what|when|who|whom|whose|where|which|how (?:many|much|long|old|often)|did|do|does|is|was|were|are|has|have|had)\b", re.I)
+
+
+def detect_intent(query: str) -> str:
+    for name, rx in _INTENT:
+        if rx.search(query):
+            return name
+    return "default"
+
+
+def is_task_request(query: str) -> bool:
+    """「要你做事」的题才打开规矩口袋（write / can you recommend / 帮我…）。
+    问事实的题（what/when/who/did… 开头）不开：LoCoMo 消融里常开会挤掉真命中，-3 个点。"""
+    return bool(_TASK.search(query)) and not _FACTUAL.match(query)
+
+
+# ---------- 五路 ----------
+
+def _bm25_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], dict[int, float]]:
+    if idx.bm25 is None:
+        return [], {}
+    scores = idx.bm25.get_scores(tokenize(q))
+    order = np.argsort(-scores)
+    hits = [int(i) for i in order[:n] if scores[i] > 0]
+    return hits, {int(i): float(scores[i]) for i in hits}
+
+
+async def _vector_channel(idx: UserIndex, q: str, n: int) -> list[int]:
+    vec = await embed_query(q)
+    if vec is None:
+        return []
+    sql = ("SELECT id FROM segments WHERE user_id = %s AND embedding IS NOT NULL AND exact_dup_of IS NULL "
+           "ORDER BY embedding <=> %s::vector LIMIT %s")
+    with pool.connection() as conn:
+        ids = [r[0] for r in conn.execute(sql, (idx.user_id, np.array(vec, dtype=np.float32), n))]
+    return [idx.id_to_pos[i] for i in ids if i in idx.id_to_pos]
+
+
+def _entity_channel(idx: UserIndex, q: str) -> list[int]:
+    ql = q.lower()
+    hit_groups: set[str] = set()
+    for alias, canon in idx.alias_to_group.items():
+        if len(alias) > 2 and re.search(rf"\b{re.escape(alias)}\b", ql):
+            hit_groups.add(canon)
+    rows: set[int] = set()
+    for g in hit_groups:
+        rows |= idx.entity_groups.get(g, set())
+    # 同一个人的段按时间倒序，没时间的排最后
+    return sorted(rows, key=lambda p: (idx.rows[p].ts_value is None,
+                                       -(idx.rows[p].ts_value.timestamp() if idx.rows[p].ts_value else 0)))
+
+
+def _literal_channel(idx: UserIndex, q: str, bm25_scores: dict[int, float]) -> list[int]:
+    terms = [t.lower() for t in literal_terms(q)]
+    if not terms:
+        return []
+    hits = [r.pos for r in idx.rows if any(t in r.text.lower() for t in terms)]
+    return sorted(hits, key=lambda p: -bm25_scores.get(p, 0.0))
+
+
+def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
+    if intent != "temporal":
+        return []
+    rows: set[int] = set()
+    for gran, d in extract_dates(q):
+        if gran == "month":
+            rows |= idx.by_month.get(d, set())
+        else:
+            from datetime import datetime
+            base = datetime.strptime(d, "%Y-%m-%d")
+            for delta in range(-3, 4):
+                rows |= idx.by_date.get((base + timedelta(days=delta)).strftime("%Y-%m-%d"), set())
+    return sorted(rows, key=lambda p: idx.rows[p].seq)
+
+
+# ---------- 融合与后处理 ----------
+
+def _rrf(channels: dict[str, list[int]], intent: str) -> tuple[list[int], dict[int, float], dict[int, set[str]]]:
+    w = _WEIGHTS[intent]
+    score: dict[int, float] = {}
+    hit_by: dict[int, set[str]] = {}
+    for name, hits in channels.items():
+        start = 0 if name in ("bm25", "vector") else _VIRTUAL_RANK
+        for i, pos in enumerate(hits):
+            score[pos] = score.get(pos, 0.0) + w[name] / (config.RRF_K + start + i + 1)
+            hit_by.setdefault(pos, set()).add(name)
+    order = sorted(score, key=lambda p: -score[p])
+    return order, score, hit_by
+
+
+def _both_first(order: list[int], hit_by: dict[int, set[str]]) -> list[int]:
+    both = [p for p in order if {"bm25", "vector"} <= hit_by.get(p, set())]
+    rest = [p for p in order if p not in set(both)]
+    return both + rest
+
+
+def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
+    """前 N 个锚点的同会话前后各一段，放在前 20 条命中之后，总数封顶 k 的一小部分。
+    紧贴锚点插入会把真命中挤出前 10（9-26 消融 any@10 0.54 → 0.47），每条自带日期和说话人，读者不靠相邻也能对上。"""
+    cap = int(k * config.NEIGHBOR_CAP_RATIO)
+    if cap <= 0:
+        return order
+    seen = set(order)
+    neighbors: list[int] = []
+    for p in order[: config.NEIGHBOR_ANCHORS]:
+        for q in (p - 1, p + 1):
+            if 0 <= q < len(idx.rows) and q not in seen and idx.rows[q].session_id == idx.rows[p].session_id:
+                neighbors.append(q)
+                seen.add(q)
+                if len(neighbors) >= cap:
+                    break
+        if len(neighbors) >= cap:
+            break
+    cut = min(20, len(order))
+    return order[:cut] + neighbors + order[cut:]
+
+
+def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
+    """规矩口袋：固定名额，不看相似度，放在前 10 条命中之后。"""
+    present = set(order)
+    rules = [p for p in idx.rule_rows if p not in present][: config.RULE_SLOT]
+    if not rules:
+        return order
+    cut = min(10, len(order))
+    return order[:cut] + rules + order[cut:]
+
+
+# ---------- 装箱 ----------
+
+def _render(idx: UserIndex, r: Row) -> str:
+    who = r.speaker_name or r.role
+    text = r.text
+    if r.speaker_name and text.startswith(f"{r.speaker_name}:"):
+        text = text[len(r.speaker_name) + 1:].lstrip()
+    head = date_header(r.ts_value, r.ts_granularity, idx.session_label.get(r.session_id, "session ?"))
+    part = f" (part {r.part}/{r.total})" if r.total > 1 else ""
+    return f"{head} {who}:{part} {text}"
+
+
+def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int) -> list[dict]:
+    out: list[dict] = []
+    used = 0
+    for p in order:
+        if len(out) >= top_k:
+            break
+        r = idx.rows[p]
+        content = _render(idx, r)
+        t = count_tokens(content)
+        if used + t > config.BUDGET_TOKENS:
+            continue  # 整条跳过，绝不截断
+        item = {"id": r.id, "content": content, "score": round(scores.get(p, 0.0), 6)}
+        ca = created_at_value(r.ts_value, r.ts_granularity)
+        if ca:
+            item["created_at"] = ca
+        out.append(item)
+        used += t
+    return out
+
+
+# ---------- 入口 ----------
+
+async def search(user_id: str, query: str, options: list[str] | None, top_k: int) -> list[dict]:
+    # 建索引是 CPU 活（BM25 + 抽名），放线程池，别堵住事件循环里别的请求
+    idx = await asyncio.to_thread(get_index, user_id)
+    if not idx.rows:
+        return []
+    k = min(top_k, config.HARD_TOP_K)
+    q = query if not options else query + " " + " ".join(options)
+    intent = detect_intent(query)
+    n = k * config.CHANNEL_TOPN_MULT
+
+    bm25_hits, bm25_scores = _bm25_channel(idx, q, n)
+    try:
+        vec_hits = await asyncio.wait_for(_vector_channel(idx, q, n), timeout=config.SEARCH_TIMEOUT_S)
+    except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
+        log.warning("vector channel skipped: %s", e)
+        vec_hits = []
+
+    channels = {
+        "bm25": bm25_hits,
+        "vector": vec_hits,
+        "entity": _entity_channel(idx, q),
+        "literal": _literal_channel(idx, q, bm25_scores),
+        "date": _date_channel(idx, q, intent),
+    }
+    order, scores, hit_by = _rrf(channels, intent)
+    order = _both_first(order, hit_by)
+    if is_task_request(query):
+        order = _insert_rules(idx, order)
+    order = _with_neighbors(idx, order, k)
+    for p in order:
+        scores.setdefault(p, 0.0)
+    return _box(idx, order, scores, k)

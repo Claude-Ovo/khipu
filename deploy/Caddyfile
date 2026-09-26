@@ -1,0 +1,30 @@
+{
+	# 按 IP 访问时客户端不带 SNI，没这行 Caddy 找不到证书
+	default_sni 43.128.132.126
+}
+
+# akeovo.com 在国内被按 SNI 封了；IP 证书握手里没有域名
+43.128.132.126 {
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+	encode gzip
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			read_timeout 1800s
+			write_timeout 1800s
+		}
+	}
+}
+
+aml.akeovo.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			read_timeout 1800s
+			write_timeout 1800s
+		}
+	}
+}
