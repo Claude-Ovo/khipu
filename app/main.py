@@ -22,7 +22,7 @@ from .db import init_schema, pool
 from .embed import embed_texts
 from .index import invalidate
 from .search import search as run_search
-from .textutil import date_header
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("aml")
@@ -92,12 +92,14 @@ async def require_auth(authorization: str | None = Header(default=None), x_api_k
 
 # ---------- 数据库操作（同步，放线程池） ----------
 
-def _embed_text_of(s) -> str:
-    return f"{date_header(s.ts_value, s.ts_granularity, '')} {s.speaker_name or s.role}: {s.text}"
+def _embed_text_of(role: str, speaker: str | None, text: str) -> str:
+    # 向量文本不带日期：日期依赖库里的继承状态，放进去就没法在事务前算；日期信号交给 BM25 索引
+    return f"{speaker or role}: {text}"
 
 
-def _add_transaction(req: AddRequest, payload_sha: str) -> tuple[dict, list]:
-    """返回 (响应, 新写入的段列表)。段列表为空表示这是重放。"""
+def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[float]]) -> tuple[dict, list]:
+    """返回 (响应, 新写入的段列表)。段列表为空表示这是重放。vectors 以「正文」为键，写入时一并落库，
+    所以只要 key 配好，库里每一段都带向量，复现时不会因为回填时机不同而结果不同。"""
     response = {"success": True, "request_id": req.request_id, "user_id": req.user_id, "session_id": req.session_id}
     with pool.connection() as conn:
         with conn.transaction():
@@ -125,10 +127,12 @@ def _add_transaction(req: AddRequest, payload_sha: str) -> tuple[dict, list]:
             with conn.cursor() as cur:
                 cur.executemany(
                     "INSERT INTO segments (user_id, id, session_id, request_id, seq, part, total, role, speaker_name, "
-                    "ts_value, ts_granularity, ts_provenance, text, content_sha, is_rule) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "ts_value, ts_granularity, ts_provenance, text, content_sha, is_rule, embedding) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     [(s.user_id, s.id, s.session_id, s.request_id, s.seq, s.part, s.total, s.role, s.speaker_name,
-                      s.ts_value, s.ts_granularity, s.ts_provenance, s.text, s.content_sha, s.is_rule) for s in segments])
+                      s.ts_value, s.ts_granularity, s.ts_provenance, s.text, s.content_sha, s.is_rule,
+                      (np.array(vectors[_embed_text_of(s.role, s.speaker_name, s.text)], dtype=np.float32)
+                       if _embed_text_of(s.role, s.speaker_name, s.text) in vectors else None)) for s in segments])
     return response, segments
 
 
@@ -169,7 +173,7 @@ async def _backfill_vectors_loop() -> None:
             if not rows:
                 await asyncio.sleep(60)
                 continue
-            texts = [f"{date_header(r[5], r[6], '')} {r[3] or r[4]}: {r[2]}" for r in rows]
+            texts = [_embed_text_of(r[4], r[3], r[2]) for r in rows]
             vecs = await embed_texts(texts)
             by_user: dict[str, tuple[list, list]] = {}
             for r, v in zip(rows, vecs):
@@ -223,13 +227,22 @@ async def health() -> dict[str, Any]:
 @app.post("/add", dependencies=[Depends(require_auth)])
 async def add(req: AddRequest) -> dict[str, Any]:
     payload_sha = hashlib.sha256(json.dumps(req.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-    response, segments = await asyncio.to_thread(_add_transaction, req, payload_sha)
-    if not segments:
-        return response  # 幂等重放
-    invalidate(req.user_id)  # 此刻 BM25 已可检索；向量随后补
-    vecs = await embed_texts([_embed_text_of(s) for s in segments])
-    if any(v is not None for v in vecs):
-        await asyncio.to_thread(_store_vectors, req.user_id, [s.id for s in segments], vecs)
+    # 先算向量再进事务：向量文本只含说话人和正文，不依赖库里状态，所以能在写入前算好、随段一起落库。
+    # 算不出来（限流、断网）就回 503 让平台稍后重试（合同里 503 是可重试的），不留没向量的段——复现时库的状态必须一样。
+    vectors: dict[str, list[float]] = {}
+    if config.EMBED_API_KEY:
+        from .chunking import _split_long, speaker_prefix  # 只为拿到与写入完全一致的切分
+        texts: list[str] = []
+        for m in req.messages:
+            sp = speaker_prefix(m.content)
+            texts.extend(_embed_text_of(m.role, sp, piece) for piece in _split_long(m.content, config.SEGMENT_MAX_TOKENS))
+        uniq = list(dict.fromkeys(texts))
+        vecs = await embed_texts(uniq)
+        if any(v is None for v in vecs):
+            raise HTTPException(status_code=503, detail="embedding temporarily unavailable, retry later")
+        vectors = dict(zip(uniq, vecs))
+    response, segments = await asyncio.to_thread(_add_transaction, req, payload_sha, vectors)
+    if segments:
         invalidate(req.user_id)
     return response
 

@@ -78,6 +78,8 @@ def _vector_sql(user_id: str, vec: list[float], n: int) -> list[str]:
 
 
 async def _vector_channel(idx: UserIndex, q: str, n: int) -> list[int]:
+    if not any(r.has_vector for r in idx.rows):
+        return []
     vec = await embed_query(q)
     if vec is None:
         return []
