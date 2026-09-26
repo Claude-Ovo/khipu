@@ -8,7 +8,12 @@ ssh morrow bash -s <<'EOF'
 set -e
 cd /srv/aml/app
 /srv/aml/.venv/bin/pip install -q -r requirements.txt
-[ -f /srv/aml/.env ] || cp deploy/env.example /srv/aml/.env
+if [ ! -f /srv/aml/.env ]; then
+  # 首次部署：不用示例文件里的公开值，生成随机 token 并只让本用户可读；token 不打印
+  umask 077
+  sed 's/^AML_API_TOKEN=.*/AML_API_TOKEN='"$(openssl rand -hex 24)"'/' deploy/env.example > /srv/aml/.env
+  echo "generated /srv/aml/.env with a fresh AML_API_TOKEN (not shown)"
+fi
 sudo cp deploy/aml.service /etc/systemd/system/aml.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now aml >/dev/null

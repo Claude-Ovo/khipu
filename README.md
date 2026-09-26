@@ -16,8 +16,8 @@ The system exposes only the two endpoints the platform calls, `POST /add` and `P
 
 ```
 pip install -r requirements.txt
-cp deploy/env.example .env   # DATABASE_URL, AML_API_TOKEN, DASHSCOPE_API_KEY
-uvicorn app.main:app --host 127.0.0.1 --port 8080
+cp deploy/env.example .env   # DATABASE_URL, AML_API_TOKEN (set a real one), DASHSCOPE_API_KEY
+uvicorn app.main:app --host 127.0.0.1 --port 8080 --env-file .env
 python tests/contract_smoke.py http://127.0.0.1:8080 <token>
 python tests/replay_locomo.py --base http://127.0.0.1:8080 --token <token> --data data/locomo10.json
 ```

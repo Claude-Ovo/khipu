@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
 
@@ -57,22 +57,31 @@ def is_task_request(query: str) -> bool:
 # ---------- 五路 ----------
 
 def _bm25_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], dict[int, float]]:
+    """候选 = 至少含一个查询词的段（rank_bm25 在一两条记忆的用户上 idf 为负，不能拿 score>0 当命中），再按分排序。"""
     if idx.bm25 is None:
         return [], {}
-    scores = idx.bm25.get_scores(tokenize(q))
-    order = np.argsort(-scores)
-    hits = [int(i) for i in order[:n] if scores[i] > 0]
-    return hits, {int(i): float(scores[i]) for i in hits}
+    q_tokens = set(tokenize(q))
+    if not q_tokens:
+        return [], {}
+    scores = idx.bm25.get_scores(list(q_tokens))
+    cand = [i for i, ts in enumerate(idx.token_sets) if ts & q_tokens]
+    cand.sort(key=lambda i: -scores[i])
+    hits = cand[:n]
+    return hits, {i: float(scores[i]) for i in hits}
+
+
+def _vector_sql(user_id: str, vec: list[float], n: int) -> list[str]:
+    sql = ("SELECT id FROM segments WHERE user_id = %s AND embedding IS NOT NULL "
+           "ORDER BY embedding <=> %s::vector LIMIT %s")
+    with pool.connection() as conn:
+        return [r[0] for r in conn.execute(sql, (user_id, np.array(vec, dtype=np.float32), n))]
 
 
 async def _vector_channel(idx: UserIndex, q: str, n: int) -> list[int]:
     vec = await embed_query(q)
     if vec is None:
         return []
-    sql = ("SELECT id FROM segments WHERE user_id = %s AND embedding IS NOT NULL AND exact_dup_of IS NULL "
-           "ORDER BY embedding <=> %s::vector LIMIT %s")
-    with pool.connection() as conn:
-        ids = [r[0] for r in conn.execute(sql, (idx.user_id, np.array(vec, dtype=np.float32), n))]
+    ids = await asyncio.to_thread(_vector_sql, idx.user_id, vec, n)
     return [idx.id_to_pos[i] for i in ids if i in idx.id_to_pos]
 
 
@@ -102,11 +111,10 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
     if intent != "temporal":
         return []
     rows: set[int] = set()
-    for gran, d in extract_dates(q):
+    for gran, d in extract_dates(q):  # extract_dates 已过滤非法日期
         if gran == "month":
             rows |= idx.by_month.get(d, set())
         else:
-            from datetime import datetime
             base = datetime.strptime(d, "%Y-%m-%d")
             for delta in range(-3, 4):
                 rows |= idx.by_date.get((base + timedelta(days=delta)).strftime("%Y-%m-%d"), set())

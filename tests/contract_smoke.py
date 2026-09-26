@@ -2,6 +2,7 @@
 用法：python tests/contract_smoke.py http://127.0.0.1:8080 [token]"""
 from __future__ import annotations
 
+import json
 import sys
 import time
 import uuid
@@ -75,6 +76,44 @@ check(r.status_code == 422, f"empty query -> 4xx (got {r.status_code})")
 t = time.time()
 r = c.post("/search", json={"query": "cat vet shot", "user_id": U, "top_k": 100})
 print(f"   search latency {time.time() - t:.3f}s")
+
+# ---- 并发（审查 #3 P0-01/02/03）----
+from concurrent.futures import ThreadPoolExecutor
+
+U2, S2 = f"{U}:cc", f"{S}:cc"
+same = {"request_id": f"{U2}:chunk-0", "user_id": U2, "session_id": S2,
+        "messages": [{"role": "user", "content": "Same payload sent five times at once."}]}
+with ThreadPoolExecutor(8) as ex:
+    rs = list(ex.map(lambda _: c.post("/add", json=same), range(5)))
+check(all(x.status_code == 200 for x in rs) and len({json.dumps(x.json(), sort_keys=True) for x in rs}) == 1, "5 concurrent identical Adds -> all 200, identical bodies")
+d = c.post("/search", json={"query": "same payload", "user_id": U2, "top_k": 100}).json()["data"]
+check(len(d) == 1, f"...and exactly one segment stored ({len(d)})")
+
+diff = [dict(same, request_id=f"{U2}:chunk-1", messages=[{"role": "user", "content": f"variant {i}"}]) for i in range(4)]
+with ThreadPoolExecutor(8) as ex:
+    rs = list(ex.map(lambda b: c.post("/add", json=b), diff))
+codes = sorted(x.status_code for x in rs)
+check(codes.count(200) == 1 and codes.count(409) == 3, f"4 concurrent Adds with same request_id but different payloads -> one 200, three 409 (got {codes})")
+
+seqs = [dict(same, request_id=f"{U2}:seq-{i}", messages=[{"role": "user", "content": f"parallel message {i}"}]) for i in range(6)]
+with ThreadPoolExecutor(8) as ex:
+    rs = list(ex.map(lambda b: c.post("/add", json=b), seqs))
+d = c.post("/search", json={"query": "parallel message", "user_id": U2, "top_k": 100}).json()["data"]
+check(all(x.status_code == 200 for x in rs) and sum("parallel message" in it["content"] for it in d) == 6,
+      "6 concurrent Adds to one session -> all 6 messages stored (no seq collision)")
+
+other = {"request_id": f"{U}:other:chunk-0", "user_id": f"{U}:other-user", "session_id": S,
+         "messages": [{"role": "user", "content": "Different user, same session id."}]}
+r = c.post("/add", json=other)
+d = c.post("/search", json={"query": "different user", "user_id": f"{U}:other-user", "top_k": 100}).json()["data"]
+check(r.status_code == 200 and len(d) == 1, "same session_id under another user_id does not collide")
+
+r = c.post("/search", json={"query": "meeting on 2023-02-30 or 2023-99-01?", "user_id": U, "top_k": 100})
+check(r.status_code == 200, f"invalid calendar dates in query -> still 200 (got {r.status_code})")
+r = c.post("/add", json=dict(same, request_id=f"{U2}:bad-ts", messages=[{"role": "user", "content": "x", "timestamp": 1e30}]))
+check(r.status_code == 422, f"absurd timestamp -> 422 (got {r.status_code})")
+r = c.post("/search", json={"query": "hello", "user_id": U})
+check(r.status_code == 422, f"missing top_k -> 422 (got {r.status_code})")
 
 print("\nFAILS:", fails)
 sys.exit(1 if fails else 0)

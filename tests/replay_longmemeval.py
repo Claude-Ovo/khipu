@@ -98,8 +98,8 @@ def main() -> None:
                 got_meta.append(meta[int(m.group(1)) - 1])
         ans_sessions = set(q.get("answer_session_ids") or [])
         if dump is not None:
-            mem_u = [it["content"] for it in items if re.match(r"^\[[^\]]*\]\s+user:", it["content"])]
             mem_a = [it["content"] for it in items if re.match(r"^\[[^\]]*\]\s+assistant:", it["content"])]
+            mem_u = [it["content"] for it in items if it["content"] not in mem_a]  # 没归到 assistant 的一律给 user，不丢
             dump.write(json.dumps({"id": q["question_id"], "question_type": q.get("question_type"), "question": q["question"],
                                    "question_date": q.get("question_date"), "gold_answer": str(q.get("answer", "")),
                                    "speaker_1_name": "user", "speaker_1_memories": "\n".join(mem_u),

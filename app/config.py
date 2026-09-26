@@ -13,7 +13,9 @@ def _float(name: str, default: float) -> float:
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://aml:aml-local-only@127.0.0.1:5432/aml")
-API_TOKEN = os.environ.get("AML_API_TOKEN", "")  # 空 = 不鉴权，只允许本地/冒烟
+API_TOKEN = os.environ.get("AML_API_TOKEN", "")
+ALLOW_NO_AUTH = os.environ.get("AML_ALLOW_NO_AUTH", "") == "1"   # 只给本地冒烟用；线上必须有 token
+PLACEHOLDER_TOKENS = {"change-me", "changeme", "example", "test", "token"}
 
 # 向量：text-embedding-v4（比赛规定），走阿里百炼 OpenAI 兼容口
 EMBED_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")

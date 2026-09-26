@@ -1,4 +1,6 @@
-"""每用户一份内存索引：BM25、实体表、日期表、规矩表、会话邻居。Add 后失效，Search 时按需重建。"""
+"""每用户一份内存索引：BM25、实体表、日期表、规矩表、会话邻居。Add 后失效，Search 时按需重建。
+版本在建索引前锁内捕获、建完再核对，中途失效就丢弃重建（审查 #3 P1-05）；每用户一把构建锁，并发 miss 只建一份。
+部署只跑一个 worker，进程内失效才可靠（P1-04）。"""
 from __future__ import annotations
 
 import threading
@@ -10,7 +12,7 @@ from rank_bm25 import BM25Okapi
 
 from . import config
 from .db import pool
-from .textutil import date_strings, same_person, tokenize
+from .textutil import date_strings, extract_names, same_person, tokenize
 
 
 @dataclass
@@ -38,17 +40,19 @@ class UserIndex:
     bm25: BM25Okapi | None
     entity_groups: dict[str, set[int]]     # 规范名 -> 行号集合
     alias_to_group: dict[str, str]         # 任意写法(小写) -> 规范名
-    by_date: dict[str, set[int]]           # 'YYYY-MM-DD' -> 行号
-    by_month: dict[str, set[int]]          # 'YYYY-MM' -> 行号
+    by_date: dict[str, set[int]]
+    by_month: dict[str, set[int]]
     rule_rows: list[int]
-    session_label: dict[str, str]          # session_id -> 'session 3'
+    session_label: dict[str, str]
     id_to_pos: dict[str, int]
     version: int
+    token_sets: list[set[str]] = field(default_factory=list)  # 每行的词集合：小语料里 BM25 会打负分，命中与否按词集合判
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()
 _lock = threading.Lock()
 _versions: dict[str, int] = {}
+_build_locks: dict[str, threading.Lock] = {}
 
 
 def invalidate(user_id: str) -> None:
@@ -59,8 +63,7 @@ def invalidate(user_id: str) -> None:
 
 def _load_rows(user_id: str) -> list[Row]:
     sql = ("SELECT id, session_id, seq, part, total, role, speaker_name, ts_value, ts_granularity, text, is_rule, "
-           "embedding IS NOT NULL FROM segments WHERE user_id = %s AND exact_dup_of IS NULL "
-           "ORDER BY session_id, seq, part")
+           "embedding IS NOT NULL FROM segments WHERE user_id = %s ORDER BY session_id, seq, part")
     rows: list[Row] = []
     with pool.connection() as conn:
         for pos, r in enumerate(conn.execute(sql, (user_id,))):
@@ -73,40 +76,52 @@ def _index_text(row: Row) -> str:
     return " ".join([who, *date_strings(row.ts_value), row.text])
 
 
-def _build(user_id: str) -> UserIndex:
-    from .textutil import extract_names  # 局部导入避免循环
+def group_names(names_per_row: list[list[str]]) -> tuple[dict[str, set[int]], dict[str, str]]:
+    """两遍归一：先汇总候选名，找出「被两个以上互不相同的长名包含」的歧义短名，独立保留、不做合并依据；
+    再对其余名字按互相包含 / bigram ≥ 0.5 分组（审查 #3 P1-07）。"""
+    all_names: dict[str, str] = {}  # 小写 -> 首次出现的写法
+    for names in names_per_row:
+        for n in names:
+            all_names.setdefault(n.lower(), n)
+    lowers = list(all_names)
+    ambiguous: set[str] = set()
+    for s in lowers:
+        containers = [l for l in lowers if l != s and s in l]
+        distinct = [c for i, c in enumerate(containers) if not any(same_person(c, o) for o in containers[:i])]
+        if len(distinct) >= 2:
+            ambiguous.add(s)
+    canon_of: dict[str, str] = {}
+    canons: list[str] = []
+    for l in lowers:
+        if l in ambiguous:
+            canon_of[l] = all_names[l]
+            continue
+        found = None
+        for c in canons:
+            if c.lower() not in ambiguous and same_person(c, all_names[l]):
+                found = c
+                break
+        if found is None:
+            found = all_names[l]
+            canons.append(found)
+        canon_of[l] = found
+    groups: dict[str, set[int]] = {}
+    for pos, names in enumerate(names_per_row):
+        for n in names:
+            groups.setdefault(canon_of[n.lower()], set()).add(pos)
+    return groups, canon_of
 
+
+def _build(user_id: str, version: int) -> UserIndex:
     rows = _load_rows(user_id)
-    version = _versions.get(user_id, 0)
     corpus = [tokenize(_index_text(r)) for r in rows]
     bm25 = BM25Okapi(corpus, k1=1.5, b=0.75) if rows else None
-
-    # 实体：抽名、归一
-    groups: dict[str, set[int]] = {}
-    alias: dict[str, str] = {}
+    token_sets = [set(t) for t in corpus]
     for r in rows:
         r.names = extract_names(r.text)
         if r.speaker_name:
             r.names.append(r.speaker_name)
-        for n in r.names:
-            key = n.lower()
-            canon = alias.get(key)
-            if canon is None:
-                for existing in list(groups):
-                    if same_person(existing, n):
-                        canon = existing
-                        break
-                canon = canon or n
-                alias[key] = canon
-                groups.setdefault(canon, set())
-            groups[canon].add(r.pos)
-    # 泛指词保护：一个短名被两个以上不同的名包含，它不该并进任何一组
-    for key, canon in list(alias.items()):
-        containers = {c for c in groups if key != c.lower() and key in c.lower()}
-        if len(containers) >= 2 and canon.lower() != key:
-            alias[key] = key.capitalize()
-            groups.setdefault(key.capitalize(), set())
-
+    groups, alias = group_names([r.names for r in rows])
     by_date: dict[str, set[int]] = {}
     by_month: dict[str, set[int]] = {}
     rule_rows: list[int] = []
@@ -120,7 +135,7 @@ def _build(user_id: str) -> UserIndex:
         if r.session_id not in session_label:
             session_label[r.session_id] = f"session {len(session_label) + 1}"
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
-                     {r.id: r.pos for r in rows}, version)
+                     {r.id: r.pos for r in rows}, version, token_sets)
 
 
 def get_index(user_id: str) -> UserIndex:
@@ -129,10 +144,20 @@ def get_index(user_id: str) -> UserIndex:
         if idx is not None and idx.version == _versions.get(user_id, 0):
             _cache.move_to_end(user_id)
             return idx
-    idx = _build(user_id)
-    with _lock:
-        _cache[user_id] = idx
-        _cache.move_to_end(user_id)
-        while len(_cache) > config.INDEX_CACHE_USERS:
-            _cache.popitem(last=False)
-    return idx
+        build_lock = _build_locks.setdefault(user_id, threading.Lock())
+    with build_lock:
+        for _ in range(3):
+            with _lock:
+                idx = _cache.get(user_id)
+                version = _versions.get(user_id, 0)
+                if idx is not None and idx.version == version:
+                    return idx
+            built = _build(user_id, version)
+            with _lock:
+                if _versions.get(user_id, 0) == version:  # 建的过程中没有新写入，才发布
+                    _cache[user_id] = built
+                    _cache.move_to_end(user_id)
+                    while len(_cache) > config.INDEX_CACHE_USERS:
+                        _cache.popitem(last=False)
+                    return built
+        return built  # 连续三次被写入打断：直接用最后一次（已包含到那一刻的数据），不缓存
