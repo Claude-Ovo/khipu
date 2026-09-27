@@ -24,6 +24,8 @@ def main() -> None:
     ap.add_argument("--pipeline", required=True)
     ap.add_argument("--tag", default="eval")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--eval-args", default="", help="原样追加给 pipeline evaluate 的参数，如 \"--judge-max-tokens 4096\"（BEAM 默认 1024 会把批量判分 JSON 截断）")
+    ap.add_argument("--answer-args", default="", help="原样追加给 pipeline answer 的参数")
     args = ap.parse_args()
 
     for k in ("ANSWER_API_BASE", "ANSWER_API_KEY", "ANSWER_MODEL", "JUDGE_API_BASE", "JUDGE_API_KEY", "JUDGE_MODEL"):
@@ -43,8 +45,8 @@ def main() -> None:
     results = work / "results.jsonl"
 
     py = sys.executable
-    subprocess.run([py, args.pipeline, "answer", "--input", str(inp), "--output", str(answers)], check=True)
-    subprocess.run([py, args.pipeline, "evaluate", "--input", str(inp), "--answers", str(answers), "--output", str(results)], check=True)
+    subprocess.run([py, args.pipeline, "answer", "--input", str(inp), "--output", str(answers), *args.answer_args.split()], check=True)
+    subprocess.run([py, args.pipeline, "evaluate", "--input", str(inp), "--answers", str(answers), "--output", str(results), *args.eval_args.split()], check=True)
 
     by_id = {r["id"]: r for r in items}
     res = rows(results)
