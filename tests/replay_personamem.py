@@ -61,6 +61,7 @@ def main() -> None:
     ap.add_argument("--tag", default=time.strftime("%m%d-%H%M"))
     ap.add_argument("--skip-add", action="store_true")
     ap.add_argument("--dump", default="")
+    ap.add_argument("--only-users", default="", help="文件，每行一个 user_id；只跑这些用户上的题（用来复用已入库的数据）")
     args = ap.parse_args()
 
     ctx: dict[str, list[dict]] = {}
@@ -70,6 +71,10 @@ def main() -> None:
     qs = list(csv.DictReader(open(args.questions, encoding="utf-8")))
     if args.limit:
         qs = qs[: args.limit]
+    if args.only_users:
+        keep = {l.strip() for l in open(args.only_users, encoding="utf-8") if l.strip()}
+        qs = [q for q in qs if f"replay:{args.tag}:pm:{q['shared_context_id'][:12]}:{q['end_index_in_shared_context']}" in keep]
+        print(f"only-users: {len(keep)} users, {len(qs)} questions", flush=True)
 
     client = httpx.Client(base_url=args.base, headers={"Authorization": f"Bearer {args.token}"} if args.token else {}, timeout=300)
     dump = open(args.dump, "w", encoding="utf-8") if args.dump else None
