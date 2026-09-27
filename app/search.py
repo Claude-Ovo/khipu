@@ -22,7 +22,7 @@ log = logging.getLogger("aml.search")
 _INTENT = [
     ("latest", re.compile(r"\b(currently|now|nowadays|these days|at the moment|still|latest|current|present)\b|现在|目前|最近|如今", re.I)),
     ("temporal", re.compile(r"\b(when|how long|how many (days|weeks|months|years)|before|after|first|last|since|until|ago|date|\d{4})\b|什么时候|多久|之前|之后|哪天|哪年", re.I)),
-    ("aggregate", re.compile(r"\b(how many|all|list|which|every|each|what are|name the)\b|有哪些|多少|所有|列出", re.I)),
+    ("aggregate", _AGG_RX := re.compile(r"\b(how many|how much|all|list|which|every|each|what are|name the|total)\b|有哪些|多少|所有|列出", re.I)),
     ("who", re.compile(r"\b(who|whose|whom)\b|谁", re.I)),
 ]
 
@@ -167,7 +167,8 @@ def _anchor_vectors_sql(user_id: str, ids: list[str]) -> list[np.ndarray]:
     with pool.connection() as conn:
         rows = conn.execute("SELECT embedding FROM segments WHERE user_id = %s AND id = ANY(%s) AND embedding IS NOT NULL",
                             (user_id, ids)).fetchall()
-    return [np.asarray(r[0], dtype=np.float32) for r in rows]
+    # pgvector 的 psycopg 适配器返回的是 Vector 对象，不是 ndarray
+    return [np.asarray(r[0].to_numpy() if hasattr(r[0], "to_numpy") else r[0], dtype=np.float32) for r in rows]
 
 
 async def _vector_hop(idx: UserIndex, qvec: list[float], anchors: list[int], n: int) -> list[int]:
@@ -337,7 +338,8 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     }
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)
-    if config.HOP_ENABLED and intent in config.HOP_INTENTS:
+    # 「how many … last month」会被意图路由判成 temporal，但它仍是计数题，第二跳看题型不看路由结果
+    if config.HOP_ENABLED and (intent in config.HOP_INTENTS or _AGG_RX.search(query)):
         hop = await _second_hop(idx, q, order, qvec, n)
         if hop:
             channels.update(hop)
