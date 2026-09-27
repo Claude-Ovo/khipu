@@ -12,6 +12,7 @@ import numpy as np
 from . import config
 from .db import pool
 from .embed import embed_query
+from .rerank import rerank
 from .index import Row, UserIndex, get_index
 from .textutil import count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
 
@@ -177,6 +178,27 @@ def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
 
 # ---------- 装箱 ----------
 
+async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, float]) -> list[int]:
+    """对融合后的前 RERANK_TOPN 条过一遍交叉编码器，按重排分（可与 RRF 名次混合）重排；后面的原样接上。
+    重排不可用时原样返回——它只改顺序，不改准入，谁能进门仍由五路通道决定。"""
+    head = order[: config.RERANK_TOPN]
+    if len(head) < 2:
+        return order
+    try:
+        rs = await asyncio.wait_for(rerank(q, [_render(idx, idx.rows[p]) for p in head]), timeout=config.RERANK_TIMEOUT_S)
+    except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
+        log.warning("rerank skipped: %s", e)
+        rs = None
+    if rs is None:
+        return order
+    n = len(head)
+    mixed = {p: config.RERANK_MIX * rs[i] + (1 - config.RERANK_MIX) * (1 - i / n) for i, p in enumerate(head)}
+    head = sorted(head, key=lambda p: -mixed[p])
+    for p in head:
+        scores[p] = round(mixed[p], 6)
+    return head + order[len(head):]
+
+
 def _render(idx: UserIndex, r: Row) -> str:
     who = r.speaker_name or r.role
     text = r.text
@@ -198,7 +220,7 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int)
         t = count_tokens(content)
         if used + t > config.BUDGET_TOKENS:
             continue  # 整条跳过，绝不截断
-        item = {"id": r.id, "content": content, "score": round(scores.get(p, 0.0), 6)}
+        item = {"id": r.id, "content": content, "text": content, "score": round(scores.get(p, 0.0), 6)}  # text 与 content 同值：CL-Bench 管线读的是 text，空 text 静默跳过
         ca = created_at_value(r.ts_value, r.ts_granularity)
         if ca:
             item["created_at"] = ca
@@ -235,6 +257,7 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     }
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)
+    order = await _reranked(idx, q, order, scores)
     if is_task_request(query):
         order = _insert_rules(idx, order)
     order = _with_neighbors(idx, order, k)

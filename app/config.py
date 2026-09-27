@@ -26,6 +26,14 @@ EMBED_BATCH = _int("EMBED_BATCH", 10)          # 百炼同步接口单次上限
 EMBED_TIMEOUT_S = _float("EMBED_TIMEOUT_S", 20)
 EMBED_MAX_CHARS = _int("EMBED_MAX_CHARS", 6000)
 
+# 重排：gte-rerank-v2（规则允许任意 reranker）。默认关，靶场对比过再开
+RERANK_ENABLED = os.environ.get("RERANK_ENABLED", "") == "1"
+RERANK_MODEL = os.environ.get("RERANK_MODEL", "gte-rerank-v2")
+RERANK_URL = os.environ.get("RERANK_URL", "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank")
+RERANK_TOPN = _int("RERANK_TOPN", 200)         # 只重排融合后的前 N 条
+RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", 15)
+RERANK_MIX = _float("RERANK_MIX", 1.0)         # 1.0 = 完全按重排分排；0.5 = 重排分与 RRF 名次各半
+
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
 

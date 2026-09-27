@@ -14,7 +14,8 @@ from pathlib import Path
 
 
 def rows(p: Path) -> list[dict]:
-    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    # 只按换行符切，不用 splitlines：正文里可能带 U+2028 一类的 Unicode 行分隔符，splitlines 会把一行切断
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").split(chr(10)) if l.strip()]
 
 
 def main() -> None:
@@ -36,7 +37,8 @@ def main() -> None:
     work = Path(f"eval-{args.tag}")
     work.mkdir(exist_ok=True)
     inp = work / "input.jsonl"
-    inp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in items), encoding="utf-8")
+    # 写给官方管线的输入用纯 ASCII 转义：它用 splitlines 读，裸的 U+2028 会把一行切断
+    inp.write_text("".join(json.dumps(r) + "\n" for r in items), encoding="utf-8")
     answers = work / "answers.jsonl"
     results = work / "results.jsonl"
 
