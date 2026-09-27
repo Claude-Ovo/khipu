@@ -52,6 +52,7 @@ CHANNEL_TOPN_MULT = _int("CHANNEL_TOPN_MULT", 2)   # 每路取 top_k * 2
 # 9-26 LoCoMo 消融：邻居 20% + 规矩口袋常开，any@100 0.779 → 关掉 0.809。邻居改小，规矩只在「要你做事」的题上开
 NEIGHBOR_CAP_RATIO = _float("NEIGHBOR_CAP_RATIO", 0.05)
 NEIGHBOR_ANCHORS = _int("NEIGHBOR_ANCHORS", 10)
+NEIGHBOR_RADIUS = _int("NEIGHBOR_RADIUS", 1)     # 锚点前后各补几段（同会话）
 RULE_SLOT = _int("RULE_SLOT", 8)
 SEARCH_TIMEOUT_S = _float("SEARCH_TIMEOUT_S", 10)
 BUDGET_TOKENS = _int("SEARCH_BUDGET_TOKENS", 60000)

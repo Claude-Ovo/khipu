@@ -238,9 +238,10 @@ def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
     inside = set(order[:k])
     neighbors: list[int] = []
     for p in order[: config.NEIGHBOR_ANCHORS]:
-        for q in (p - 1, p + 1):
-            if 0 <= q < len(idx.rows) and q not in inside and q not in neighbors \
-                    and idx.rows[q].session_id == idx.rows[p].session_id:
+        cands = [p + s * d for d in range(1, config.NEIGHBOR_RADIUS + 1) for s in (-1, 1)]  # 先近后远
+        for q in cands:
+            ok = 0 <= q < len(idx.rows) and q not in inside and q not in neighbors
+            if ok and idx.rows[q].session_id == idx.rows[p].session_id:
                 neighbors.append(q)
                 if len(neighbors) >= cap:
                     break
