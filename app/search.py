@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections import Counter
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -34,6 +35,19 @@ _WEIGHTS = {
     "who":       {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.2, "date": 0.3},
 }
 _VIRTUAL_RANK = 4  # 实体/字面/日期通道的起始虚拟排名（MemoryConstellations 的做法）
+for _w in _WEIGHTS.values():   # 第二跳两路的分量，只有 HOP_ENABLED 时才会出现在通道表里
+    _w.setdefault("bm25_hop", config.HOP_W)
+    _w.setdefault("vector_hop", config.HOP_W)
+
+# 第二跳挑扩展词时要跳过的词：tokenize 不做停用词，这里只拦最常见的功能词和对话套话
+_HOP_STOP = set("""the and for that this with have has had was were are you your yours our ours they them their there here
+what when where which who whom how why not but can could would should will just also very really about from into than then
+them some any all more most much many few lot lots one two three like get got going went make made take took come came
+think know want need let see look feel felt say said tell told ask asked yes yeah okay sure thanks thank please sorry
+been being does did doing done its it's i'm i've i'd i'll you're we're they're don't didn't doesn't can't won't isn't
+because while though although since after before again still even ever never always often sometimes today yesterday
+tomorrow week weeks month months year years day days time times thing things something anything nothing everything
+user assistant""".split())
 
 
 _TASK = re.compile(r"^\s*(please\s+)?(write|draft|compose|help me|make|create|plan|recommend|suggest|give me|tell me how|"
@@ -78,14 +92,15 @@ def _vector_sql(user_id: str, vec: list[float], n: int) -> list[str]:
         return [r[0] for r in conn.execute(sql, (user_id, np.array(vec, dtype=np.float32), n))]
 
 
-async def _vector_channel(idx: UserIndex, q: str, n: int) -> list[int]:
+async def _vector_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], list[float] | None]:
+    """返回 (命中, 查询向量)；查询向量留给第二跳做质心用。"""
     if not any(r.has_vector for r in idx.rows):
-        return []
+        return [], None
     vec = await embed_query(q)
     if vec is None:
-        return []
+        return [], None
     ids = await asyncio.to_thread(_vector_sql, idx.user_id, vec, n)
-    return [idx.id_to_pos[i] for i in ids if i in idx.id_to_pos]
+    return [idx.id_to_pos[i] for i in ids if i in idx.id_to_pos], vec
 
 
 def _entity_channel(idx: UserIndex, q: str) -> list[int]:
@@ -122,6 +137,71 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
             for delta in range(-3, 4):
                 rows |= idx.by_date.get((base + timedelta(days=delta)).strftime("%Y-%m-%d"), set())
     return sorted(rows, key=lambda p: idx.rows[p].seq)
+
+
+# ---------- 第二跳（伪相关反馈） ----------
+
+def _hop_terms(idx: UserIndex, anchors: list[int], q_tokens: set[str]) -> list[str]:
+    """从锚段里挑扩展词：不在查询里、不是功能词，按「几个锚都提到 × 语料里稀有」排。"""
+    df: Counter[str] = Counter()
+    for p in anchors:
+        for t in idx.token_sets[p]:
+            if t not in q_tokens and t not in _HOP_STOP and len(t) > 2 and not t.isdigit():
+                df[t] += 1
+    idf = idx.bm25.idf if idx.bm25 is not None else {}
+    ranked = sorted(df, key=lambda t: -(df[t] * max(float(idf.get(t, 0.0)), 0.0)))
+    return ranked[: config.HOP_TERMS]
+
+
+def _bm25_hop(idx: UserIndex, terms: list[str], n: int) -> list[int]:
+    if idx.bm25 is None or not terms:
+        return []
+    tset = set(terms)
+    scores = idx.bm25.get_scores(terms)
+    cand = [i for i, ts in enumerate(idx.token_sets) if ts & tset]
+    cand.sort(key=lambda i: -scores[i])
+    return cand[:n]
+
+
+def _anchor_vectors_sql(user_id: str, ids: list[str]) -> list[np.ndarray]:
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT embedding FROM segments WHERE user_id = %s AND id = ANY(%s) AND embedding IS NOT NULL",
+                            (user_id, ids)).fetchall()
+    return [np.asarray(r[0], dtype=np.float32) for r in rows]
+
+
+async def _vector_hop(idx: UserIndex, qvec: list[float], anchors: list[int], n: int) -> list[int]:
+    """Rocchio：查询向量与锚段向量的质心加权后再搜一轮。"""
+    ids = [idx.rows[p].id for p in anchors if idx.rows[p].has_vector]
+    if not ids:
+        return []
+    vecs = await asyncio.to_thread(_anchor_vectors_sql, idx.user_id, ids)
+    if not vecs:
+        return []
+    q = np.asarray(qvec, dtype=np.float32)
+    q = q / (np.linalg.norm(q) or 1.0)
+    c = np.mean([v / (np.linalg.norm(v) or 1.0) for v in vecs], axis=0)
+    mixed = config.HOP_QUERY_W * q + (1 - config.HOP_QUERY_W) * c
+    mixed = mixed / (np.linalg.norm(mixed) or 1.0)
+    hits = await asyncio.to_thread(_vector_sql, idx.user_id, mixed.tolist(), n)
+    return [idx.id_to_pos[i] for i in hits if i in idx.id_to_pos]
+
+
+async def _second_hop(idx: UserIndex, q: str, order: list[int], qvec: list[float] | None, n: int) -> dict[str, list[int]]:
+    """拿第一轮的前几条当锚，再检一轮。只开门不排序：新进来的段和别人一起过 RRF 和重排。"""
+    anchors = order[: config.HOP_ANCHORS]
+    if not anchors:
+        return {}
+    out: dict[str, list[int]] = {}
+    terms = _hop_terms(idx, anchors, set(tokenize(q)))
+    if terms:
+        out["bm25_hop"] = _bm25_hop(idx, terms, n)
+    if qvec is not None:
+        try:
+            out["vector_hop"] = await asyncio.wait_for(_vector_hop(idx, qvec, anchors, n), timeout=config.SEARCH_TIMEOUT_S)
+        except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
+            log.warning("vector hop skipped: %s", e)
+    return out
 
 
 # ---------- 融合与后处理 ----------
@@ -243,10 +323,10 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
 
     bm25_hits, bm25_scores = _bm25_channel(idx, q, n)
     try:
-        vec_hits = await asyncio.wait_for(_vector_channel(idx, q, n), timeout=config.SEARCH_TIMEOUT_S)
+        vec_hits, qvec = await asyncio.wait_for(_vector_channel(idx, q, n), timeout=config.SEARCH_TIMEOUT_S)
     except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
         log.warning("vector channel skipped: %s", e)
-        vec_hits = []
+        vec_hits, qvec = [], None
 
     channels = {
         "bm25": bm25_hits,
@@ -257,6 +337,12 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     }
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)
+    if config.HOP_ENABLED and intent in config.HOP_INTENTS:
+        hop = await _second_hop(idx, q, order, qvec, n)
+        if hop:
+            channels.update(hop)
+            order, scores, hit_by = _rrf(channels, intent)
+            order = _both_first(order, hit_by)
     order = await _reranked(idx, q, order, scores)
     if is_task_request(query):
         order = _insert_rules(idx, order)

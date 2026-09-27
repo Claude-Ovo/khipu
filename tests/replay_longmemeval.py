@@ -92,10 +92,13 @@ def main() -> None:
         r.raise_for_status()
         items = r.json()["data"]
         got_meta: list[tuple[str, bool]] = []
+        got_idx: list[int] = []
         for it in items:
             m = re.search(r"#(\d+)\.\d+$", it["id"])
             if m and 1 <= int(m.group(1)) <= len(meta):
                 got_meta.append(meta[int(m.group(1)) - 1])
+                got_idx.append(int(m.group(1)) - 1)
+        gold_idx = {i for i, (_, h) in enumerate(meta) if h}
         ans_sessions = set(q.get("answer_session_ids") or [])
         if dump is not None:
             mem_a = [it["content"] for it in items if re.match(r"^\[[^\]]*\]\s+assistant:", it["content"])]
@@ -110,6 +113,11 @@ def main() -> None:
             top = got_meta[:k]
             row[f"sess@{k}"] = int(any(s in ans_sessions for s, _ in top)) if ans_sessions else 0
             row[f"turn@{k}"] = int(any(h for _, h in top))
+            # all-hit：多会话/计数题要的是证据齐全，不是碰到一条
+            seen_idx = set(got_idx[:k])
+            seen_sess = {meta[i][0] for i in seen_idx}
+            row[f"allsess@{k}"] = int(ans_sessions <= seen_sess) if ans_sessions else 0
+            row[f"allturn@{k}"] = int(gold_idx <= seen_idx) if gold_idx else 0
         rows.append(row)
         if (qi + 1) % 20 == 0:
             print(f"{qi + 1}/{len(data)} done, {time.time() - t_start:.0f}s, last search {dt:.3f}s, msgs {len(msgs)}", flush=True)
@@ -119,6 +127,8 @@ def main() -> None:
         for k in KS:
             s[f"sess@{k}"] = round(statistics.mean(r[f"sess@{k}"] for r in rs), 4)
             s[f"turn@{k}"] = round(statistics.mean(r[f"turn@{k}"] for r in rs), 4)
+            s[f"allsess@{k}"] = round(statistics.mean(r.get(f"allsess@{k}", 0) for r in rs), 4)
+            s[f"allturn@{k}"] = round(statistics.mean(r.get(f"allturn@{k}", 0) for r in rs), 4)
         s["avg_items"] = round(statistics.mean(r["n"] for r in rs), 1)
         s["avg_chars"] = int(statistics.mean(r["chars"] for r in rs))
         s["p50_latency"] = round(statistics.median(r["latency"] for r in rs), 3)

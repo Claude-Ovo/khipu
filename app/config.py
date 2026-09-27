@@ -34,6 +34,14 @@ RERANK_TOPN = _int("RERANK_TOPN", 200)         # 只重排融合后的前 N 条
 RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", 15)
 RERANK_MIX = _float("RERANK_MIX", 1.0)         # 1.0 = 完全按重排分排；0.5 = 重排分与 RRF 名次各半
 
+# 第二跳（伪相关反馈）：拿第一轮前几条命中的词和向量再检一轮，专治「how many / 有哪些」这类证据散在多处的题。默认关
+HOP_ENABLED = os.environ.get("HOP_ENABLED", "") == "1"
+HOP_INTENTS = set(filter(None, os.environ.get("HOP_INTENTS", "aggregate").split(",")))
+HOP_ANCHORS = _int("HOP_ANCHORS", 5)          # 取第一轮前几条当锚
+HOP_TERMS = _int("HOP_TERMS", 8)              # 从锚里挑几个扩展词
+HOP_QUERY_W = _float("HOP_QUERY_W", 0.6)      # 向量第二跳里原查询向量的权重，其余给锚的质心
+HOP_W = _float("HOP_W", 0.6)                  # 两路第二跳在 RRF 里的分量
+
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
 
