@@ -102,6 +102,9 @@ def main() -> None:
             if m and 1 <= int(m.group(1)) <= len(meta):
                 got_meta.append(meta[int(m.group(1)) - 1])
                 got_idx.append(int(m.group(1)) - 1)
+            else:  # 审查 #4：映射不上的条目保留占位，名次不能被压缩
+                got_meta.append(("", False))
+                got_idx.append(-1)
         gold_idx = {i for i, (_, h) in enumerate(meta) if h}
         ans_sessions = set(q.get("answer_session_ids") or [])
         if dump is not None:
@@ -118,7 +121,7 @@ def main() -> None:
             row[f"sess@{k}"] = int(any(s in ans_sessions for s, _ in top)) if ans_sessions else 0
             row[f"turn@{k}"] = int(any(h for _, h in top))
             # all-hit：多会话/计数题要的是证据齐全，不是碰到一条
-            seen_idx = set(got_idx[:k])
+            seen_idx = {i for i in got_idx[:k] if i >= 0}
             seen_sess = {meta[i][0] for i in seen_idx}
             row[f"allsess@{k}"] = int(ans_sessions <= seen_sess) if ans_sessions else 0
             row[f"allturn@{k}"] = int(gold_idx <= seen_idx) if gold_idx else 0

@@ -41,6 +41,7 @@ HOP_ANCHORS = _int("HOP_ANCHORS", 5)          # 取第一轮前几条当锚
 HOP_TERMS = _int("HOP_TERMS", 8)              # 从锚里挑几个扩展词
 HOP_QUERY_W = _float("HOP_QUERY_W", 0.6)      # 向量第二跳里原查询向量的权重，其余给锚的质心
 HOP_W = _float("HOP_W", 0.6)                  # 两路第二跳在 RRF 里的分量
+HOP_RESERVE = _int("HOP_RESERVE", 20)         # 第二跳各路前几条保证进重排窗口（审查 #4：否则被双命中前置挤出窗口）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)

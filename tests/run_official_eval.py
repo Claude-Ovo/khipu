@@ -48,6 +48,13 @@ def main() -> None:
 
     by_id = {r["id"]: r for r in items}
     res = rows(results)
+    # 审查 #4：答案和判分的 id 必须与输入一一对应，缺题、重复都不许静默出摘要
+    ans_ids = [r["id"] for r in rows(answers)]
+    res_ids = [r["id"] for r in res]
+    for name, ids in (("answers", ans_ids), ("results", res_ids)):
+        if len(ids) != len(set(ids)) or set(ids) != set(by_id):
+            sys.exit(f"{name} ids mismatch: {len(ids)} rows, {len(set(ids))} unique, input {len(by_id)}; "
+                     f"missing {sorted(set(by_id) - set(ids))[:5]} extra {sorted(set(ids) - set(by_id))[:5]}")
     total = sum(r["is_correct"] for r in res) / max(1, len(res))
     cat: dict[str, list[int]] = defaultdict(list)
     for r in res:

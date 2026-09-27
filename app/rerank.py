@@ -27,10 +27,18 @@ async def rerank(query: str, docs: list[str]) -> list[float] | None:
                 if r.status_code == 429 or r.status_code >= 500:
                     raise httpx.HTTPStatusError(f"status {r.status_code}", request=r.request, response=r)
                 r.raise_for_status()
-                scores = [0.0] * len(docs)
-                for item in r.json()["output"]["results"]:
-                    scores[int(item["index"])] = float(item["relevance_score"])
-                return scores
+                # 审查 #4：响应必须每条候选恰好一个合法有限分数，缺项/越界/重复/NaN 一律整次降级，不能把没评的当 0 分
+                results = r.json()["output"]["results"]
+                scores: list[float | None] = [None] * len(docs)
+                for item in results:
+                    i = int(item["index"])
+                    s = float(item["relevance_score"])
+                    if not (0 <= i < len(docs)) or scores[i] is not None or s != s or s in (float("inf"), float("-inf")):
+                        raise ValueError(f"bad rerank response item index={i} score={s}")
+                    scores[i] = s
+                if any(s is None for s in scores):
+                    raise ValueError(f"rerank response incomplete: {sum(s is None for s in scores)} of {len(docs)} unscored")
+                return [float(s) for s in scores]  # type: ignore[arg-type]
             except (httpx.HTTPError, KeyError, ValueError, TypeError) as e:  # noqa: PERF203
                 log.warning("rerank attempt %d failed: %s", attempt + 1, e)
                 if attempt == 2:

@@ -232,19 +232,24 @@ def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
     cap = int(k * config.NEIGHBOR_CAP_RATIO)
     if cap <= 0:
         return order
-    seen = set(order)
+    cut = min(20, len(order))
+    # 审查 #4：以前用 seen = set(order) 判重，邻居只要在候选里（哪怕排在第 201 位、根本返回不了）就不补。
+    # 现在只把「大致会被返回的前 k 条」当作已在场，其余邻居搬进槽位并删掉旧位置，不重复。
+    inside = set(order[:k])
     neighbors: list[int] = []
     for p in order[: config.NEIGHBOR_ANCHORS]:
         for q in (p - 1, p + 1):
-            if 0 <= q < len(idx.rows) and q not in seen and idx.rows[q].session_id == idx.rows[p].session_id:
+            if 0 <= q < len(idx.rows) and q not in inside and q not in neighbors \
+                    and idx.rows[q].session_id == idx.rows[p].session_id:
                 neighbors.append(q)
-                seen.add(q)
                 if len(neighbors) >= cap:
                     break
         if len(neighbors) >= cap:
             break
-    cut = min(20, len(order))
-    return order[:cut] + neighbors + order[cut:]
+    if not neighbors:
+        return order
+    nset = set(neighbors)
+    return order[:cut] + neighbors + [p for p in order[cut:] if p not in nset]
 
 
 def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
@@ -259,10 +264,19 @@ def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
 
 # ---------- 装箱 ----------
 
-async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, float]) -> list[int]:
+async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, float],
+                    must: list[int] | None = None) -> list[int]:
     """对融合后的前 RERANK_TOPN 条过一遍交叉编码器，按重排分（可与 RRF 名次混合）重排；后面的原样接上。
-    重排不可用时原样返回——它只改顺序，不改准入，谁能进门仍由五路通道决定。"""
+    重排不可用时原样返回——它只改顺序，不改准入，谁能进门仍由五路通道决定。
+    must：必须进重排窗口的候选（审查 #4：第二跳捞到的新证据会被双命中前置挤到窗口外，永远没机会被重排）。"""
     head = order[: config.RERANK_TOPN]
+    if must:
+        hs = set(head)
+        extra = [p for p in must if p not in hs]
+        if extra:
+            head = head[: max(2, config.RERANK_TOPN - len(extra))] + extra
+            hs = set(head)
+            order = head + [p for p in order if p not in hs]
     if len(head) < 2:
         return order
     try:
@@ -339,13 +353,18 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)
     # 「how many … last month」会被意图路由判成 temporal，但它仍是计数题，第二跳看题型不看路由结果
+    must: list[int] = []
     if config.HOP_ENABLED and (intent in config.HOP_INTENTS or _AGG_RX.search(query)):
         hop = await _second_hop(idx, q, order, qvec, n)
         if hop:
+            first_round = set(order)
             channels.update(hop)
             order, scores, hit_by = _rrf(channels, intent)
             order = _both_first(order, hit_by)
-    order = await _reranked(idx, q, order, scores)
+            # 第二跳独有的新候选，各路前 HOP_RESERVE 条保证进重排窗口
+            for hits in hop.values():
+                must.extend(p for p in hits[: config.HOP_RESERVE] if p not in first_round)
+    order = await _reranked(idx, q, order, scores, must)
     if is_task_request(query):
         order = _insert_rules(idx, order)
     order = _with_neighbors(idx, order, k)
