@@ -136,6 +136,19 @@ def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[
     return response, segments
 
 
+def _saved_response(user_id: str, request_id: str, payload_sha: str) -> dict | None:
+    """重放快路径：同 (user_id, request_id) 已提交过就直接回存档，不再算向量。
+    平台 Add 最多重试 32 次，没有这一步每次重试都要重新花一遍 embedding 的钱。事务里的抢占逻辑照旧兜并发。"""
+    with pool.connection() as conn:
+        prev = conn.execute("SELECT payload_sha, response FROM requests WHERE user_id = %s AND request_id = %s",
+                            (user_id, request_id)).fetchone()
+    if prev is None:
+        return None
+    if prev[0] != payload_sha:
+        raise HTTPException(status_code=409, detail="request_id reused with a different payload")
+    return prev[1]
+
+
 def _store_vectors(user_id: str, ids: list[str], vecs: list[list[float] | None]) -> int:
     n = 0
     with pool.connection() as conn:
@@ -227,6 +240,9 @@ async def health() -> dict[str, Any]:
 @app.post("/add", dependencies=[Depends(require_auth)])
 async def add(req: AddRequest) -> dict[str, Any]:
     payload_sha = hashlib.sha256(json.dumps(req.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    saved = await asyncio.to_thread(_saved_response, req.user_id, req.request_id, payload_sha)
+    if saved is not None:
+        return saved
     # 先算向量再进事务：向量文本只含说话人和正文，不依赖库里状态，所以能在写入前算好、随段一起落库。
     # 算不出来（限流、断网）就回 503 让平台稍后重试（合同里 503 是可重试的），不留没向量的段——复现时库的状态必须一样。
     vectors: dict[str, list[float]] = {}
