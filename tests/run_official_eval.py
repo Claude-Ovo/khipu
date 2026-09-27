@@ -55,11 +55,17 @@ def main() -> None:
         if len(ids) != len(set(ids)) or set(ids) != set(by_id):
             sys.exit(f"{name} ids mismatch: {len(ids)} rows, {len(set(ids))} unique, input {len(by_id)}; "
                      f"missing {sorted(set(by_id) - set(ids))[:5]} extra {sorted(set(ids) - set(by_id))[:5]}")
-    total = sum(r["is_correct"] for r in res) / max(1, len(res))
-    cat: dict[str, list[int]] = defaultdict(list)
+    def score_of(r: dict) -> float:
+        # LongMemEval/LoCoMo/PersonaMem 给 is_correct（0/1）；BEAM 给 llm_judge_score（rubric 均分 0~1）；CL-Bench 给 rubric_clbench_score
+        for k in ("is_correct", "llm_judge_score", "rubric_clbench_score", "score"):
+            if k in r and r[k] is not None:
+                return float(r[k])
+        raise KeyError(f"no score field in result {r.get('id')}: {sorted(r)}")
+    total = sum(score_of(r) for r in res) / max(1, len(res))
+    cat: dict[str, list[float]] = defaultdict(list)
     for r in res:
         k = by_id.get(r["id"], {}).get("category") or by_id.get(r["id"], {}).get("question_type") or "all"
-        cat[str(k)].append(int(r["is_correct"]))
+        cat[str(k)].append(score_of(r))
     summary = {"tag": args.tag, "questions": len(res), "accuracy": round(total, 4),
                "by_category": {k: {"n": len(v), "acc": round(sum(v) / len(v), 4)} for k, v in sorted(cat.items())},
                "answer_model": os.environ["ANSWER_MODEL"], "judge_model": os.environ["JUDGE_MODEL"]}
