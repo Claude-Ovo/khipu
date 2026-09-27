@@ -35,6 +35,8 @@ Requires PostgreSQL 16 with the `vector` extension. `deploy/` holds the systemd 
 
 LongMemEval-S (500 questions, one 115k-token haystack each, v0.2, no vectors): answer session in top 10 for 90.8 % of questions and in top 100 for 99.8 %; the exact answer turn in top 10 for 55.2 % and in top 100 for 89.2 %. Weakest type is single-session-preference (answer turn in top 10: 20 %), where question and evidence share no vocabulary.
 
+**Reranking.** A cross-encoder (`gte-rerank-v2`, permitted by the rules) rescores the first 200 fused candidates; smaller windows lose all-evidence coverage (allturn@100 0.925 at 200 vs 0.85 at 120 vs 0.82 at 80). On LongMemEval-S (first 200 questions) it moves the exact answer turn into the top 10 for 91 % of questions (79 % without), and single-session-preference from 63 % to 93 %. Closed-loop answering with the official pipeline and a stand-in answer model (qwen-flash) goes from 0.68 to 0.715; with qwen-plus, 0.74. Two things we tried and dropped after measuring: a pseudo-relevance-feedback second hop (no change in coverage) and chronological ordering of the returned items (-3 points; relevance order wins). Oracle runs with only the gold turns show the stand-in answer models are the cap on this set, so further gains have to be measured pairwise per question, not by aggregate accuracy.
+
 The numbers above are BM25-only. With the vector channel (v0.3.1, first 200 questions of LongMemEval-S, all 30 preference questions included): answer session in top 10 for 98 %, exact answer turn in top 10 for 79 % and in top 100 for 92 %. single-session-preference turn@10 went from 20 % to 63 %. p50 search latency 0.9 s at top_k 100.
 
 ## Attribution
