@@ -32,6 +32,7 @@ RERANK_MODEL = os.environ.get("RERANK_MODEL", "gte-rerank-v2")
 RERANK_URL = os.environ.get("RERANK_URL", "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank")
 RERANK_TOPN = _int("RERANK_TOPN", 200)         # 只重排融合后的前 N 条
 RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", 15)
+RERANK_DOC_CHARS = _int("RERANK_DOC_CHARS", 0)  # >0 时只把每条候选的前 N 个字符送去重排（省钱），返回给平台的正文不受影响
 RERANK_MIX = _float("RERANK_MIX", 1.0)         # 1.0 = 完全按重排分排；0.5 = 重排分与 RRF 名次各半
 
 # 第二跳（伪相关反馈）：拿第一轮前几条命中的词和向量再检一轮，专治「how many / 有哪些」这类证据散在多处的题。默认关

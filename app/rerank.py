@@ -17,7 +17,7 @@ async def rerank(query: str, docs: list[str]) -> list[float] | None:
     if not config.RERANK_ENABLED or not config.EMBED_API_KEY or not docs:
         return None
     body = {"model": config.RERANK_MODEL,
-            "input": {"query": query[: config.EMBED_MAX_CHARS], "documents": [d[: config.EMBED_MAX_CHARS] for d in docs]},
+            "input": {"query": query[: config.EMBED_MAX_CHARS], "documents": [d[: (config.RERANK_DOC_CHARS or config.EMBED_MAX_CHARS)] for d in docs]},
             "parameters": {"return_documents": False, "top_n": len(docs)}}
     delay = 1.0
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {config.EMBED_API_KEY}"}) as client:
