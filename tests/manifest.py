@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from app import config  # noqa: E402
 from app.db import pool  # noqa: E402
 
-SECRET_MARKERS = ("KEY", "TOKEN", "PASSWORD", "SECRET", "DATABASE_URL")
+SECRET_MARKERS = ("API_KEY", "API_TOKEN", "PASSWORD", "SECRET", "DATABASE_URL")  # BUDGET_TOKENS 这类不是密钥
 
 
 def git(*args: str) -> str:
@@ -78,8 +78,9 @@ def main() -> None:
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "host": os.uname().nodename if hasattr(os, "uname") else "",
-        "git": {"commit": git("rev-parse", "HEAD"), "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-                "dirty": bool(git("status", "--porcelain"))},
+        # 部署是 tar 不是 git，服务器上没有 .git；deploy.sh 会把本地提交号写进 COMMIT 文件
+        "git": {"commit": git("rev-parse", "HEAD") or (ROOT / "COMMIT").read_text().strip() if (ROOT / "COMMIT").exists() else git("rev-parse", "HEAD"),
+                "branch": git("rev-parse", "--abbrev-ref", "HEAD"), "dirty": bool(git("status", "--porcelain"))},
         "python": py, "packages": pkgs,
         "models": {"embedding": config.EMBED_MODEL, "embedding_dim": config.EMBED_DIM, "embed_base_url": config.EMBED_BASE_URL,
                    "rerank": config.RERANK_MODEL if config.RERANK_ENABLED else None, "rerank_url": config.RERANK_URL if config.RERANK_ENABLED else None},

@@ -3,7 +3,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
-tar czf - --exclude='__pycache__' app tests deploy requirements.txt | ssh morrow 'mkdir -p /srv/aml/app && tar xzf - -C /srv/aml/app'
+git rev-parse HEAD > COMMIT 2>/dev/null || echo unknown > COMMIT   # 复现清单要的提交号（服务器上没有 .git）
+tar czf - --exclude='__pycache__' app tests deploy requirements.txt COMMIT | ssh morrow 'mkdir -p /srv/aml/app && tar xzf - -C /srv/aml/app'
 ssh morrow bash -s <<'EOF'
 set -e
 cd /srv/aml/app
