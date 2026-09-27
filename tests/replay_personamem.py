@@ -101,7 +101,7 @@ def main() -> None:
                 role = "assistant" if re.match(r"^\[[^\]]*\]\s+assistant:", it["content"]) else "user"
                 context_messages.append({"role": role, "content": it["content"]})
             dump.write(json.dumps({"id": q["question_id"], "question_type": q["question_type"], "question": q["user_question_or_message"],
-                                   "all_options": options, "correct_answer": q["correct_answer"],
+                                   "all_options": q["all_options"], "correct_answer": q["correct_answer"],
                                    "context_messages": context_messages}, ensure_ascii=False) + "\n")
         rows.append({"qid": q["question_id"], "type": q["question_type"], "n": len(items), "latency": dt,
                      "chars": sum(len(it["content"]) for it in items)})
