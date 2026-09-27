@@ -31,10 +31,11 @@ Requires PostgreSQL 16 with the `vector` extension. `deploy/` holds the systemd 
 | BM25 + entity + literal + date, neighbours 20 %, rule slot always on | 0.472 | 0.779 |
 | same, neighbours and rule slot off | 0.539 | 0.809 |
 | v0.2 (neighbours 5 % placed after the first 20 hits; rule slot only for task requests) | 0.539 | 0.806 |
+| v0.3.1 + vector channel (text-embedding-v4) | 0.659 | 0.878 |
 
 LongMemEval-S (500 questions, one 115k-token haystack each, v0.2, no vectors): answer session in top 10 for 90.8 % of questions and in top 100 for 99.8 %; the exact answer turn in top 10 for 55.2 % and in top 100 for 89.2 %. Weakest type is single-session-preference (answer turn in top 10: 20 %), where question and evidence share no vocabulary.
 
-Vector channel not yet enabled in these numbers.
+The numbers above are BM25-only. With the vector channel (v0.3.1, first 200 questions of LongMemEval-S, all 30 preference questions included): answer session in top 10 for 98 %, exact answer turn in top 10 for 79 % and in top 100 for 92 %. single-session-preference turn@10 went from 20 % to 63 %. p50 search latency 0.9 s at top_k 100.
 
 ## Attribution
 
