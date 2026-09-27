@@ -56,6 +56,7 @@ def main() -> None:
     ap.add_argument("--top-k", type=int, default=100)
     ap.add_argument("--tag", default=time.strftime("%m%d-%H%M"))
     ap.add_argument("--skip-add", action="store_true")
+    ap.add_argument("--types", default="", help="只跑这些 question_type（逗号分隔），配合 --skip-add 做小样本对照")
     ap.add_argument("--dump", default="", help="把每题的检索结果按官方答题模板字段写成 JSONL（speaker_1=user, speaker_2=assistant）")
     args = ap.parse_args()
     dump = open(args.dump, "w", encoding="utf-8") if args.dump else None
@@ -64,6 +65,9 @@ def main() -> None:
     data = json.load(open(args.data, encoding="utf-8"))
     if args.limit:
         data = data[: args.limit]
+    if args.types:
+        want = set(args.types.split(","))
+        data = [q for q in data if q.get("question_type") in want]
 
     rows: list[dict] = []
     t_start = time.time()
