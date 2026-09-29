@@ -17,7 +17,7 @@ import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 from . import config
 from .chunking import build_segments
@@ -30,16 +30,24 @@ from .search import search as run_search
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("aml")
 
-MAX_TS_MS = 4_102_444_800_000  # 2100-01-01
+MAX_TS_MS = 253_402_214_400_000  # 9999-12-31T00:00Z，留 8 小时余量，+08 读回不会越过 10000 年（原来是 2100-01-01，9-29 Full 就是被它卡住的）
 
 
 # ---------- 模型 ----------
 
-# 宽进原则（2026-09-29 Full 因 422 中断后改）：凡是以前会被 422 拒掉的输入，尽量接下来；以前能通过的输入，行为和
-# payload_sha 完全不变。平台对 422 不会重试，一条它认为合法、我们认为不合法的数据就能让整场 Full 失败。
+# 宽进原则（2026-09-29 Full 因 422 中断后改）：凡是以前会被 422 拒掉的输入，尽量接下来；以前能通过的输入，解析结果、
+# payload_sha、写入的段和响应完全不变。平台对 422 不会重试，一条它认为合法、我们认为不合法的数据就能让整场 Full 失败。
+# 根因：平台一个合成对话数据集的时间戳逐用户后推，越过了原来的 2100-01-01 上限。
+# 例外（有意为之）：Add 正文里的 NUL 和孤立代理项会被清掉——旧版模型虽然收，但落库/算 SHA 时一定 500，从没成功写入过。
 
+_TS_ADAPTER = TypeAdapter(int | float | None)   # 与 Message.timestamp 字段同一套 lax 解析
+_INT_ADAPTER = TypeAdapter(int)                 # 与旧 SearchRequest.top_k 同一套 lax 解析
 _ROLE_ALIASES = {"human": "user", "ai": "assistant", "bot": "assistant", "model": "assistant", "gpt": "assistant",
                  "chatbot": "assistant", "agent": "assistant"}
+_IMAGE_TYPES = {"image_url", "image", "input_image"}
+_LME_TS = re.compile(r"(\d{4})/(\d{2})/(\d{2})\s*\([A-Za-z]{3}\)\s*(\d{2}):(\d{2})")
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_MAX_DT = datetime(9999, 12, 31, tzinfo=timezone.utc)
 
 
 def _clean_text(s: str) -> str:
@@ -53,62 +61,119 @@ def _clean_text(s: str) -> str:
     return s
 
 
+def _is_text_block(p: Any) -> bool:
+    return isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+
+
+def _is_image_block(p: Any) -> bool:
+    return isinstance(p, dict) and p.get("type") in _IMAGE_TYPES
+
+
+def _json_text(v: Any) -> str:
+    try:
+        return json.dumps(v, ensure_ascii=False)
+    except (ValueError, TypeError, RecursionError):
+        return str(v)
+
+
 def _content_to_text(v: Any) -> str:
     if v is None:
         return ""
     if isinstance(v, str):
         return _clean_text(v)
     if isinstance(v, list):
-        # ContentPart[]（每项都是字符串或带 type 的 dict）：只取文字部分，按原顺序拼；图片不存
-        if v and all(isinstance(p, str) or (isinstance(p, dict) and "type" in p) for p in v):
-            parts = [p if isinstance(p, str) else p.get("text") for p in v]
-            return _clean_text("\n".join(x for x in parts if isinstance(x, str)))
-        return _clean_text(json.dumps(v, ensure_ascii=False))  # 其他结构化内容原样转成 JSON 文本，不丢
+        # 只有明确认得的 ContentPart（字符串、text 块、图片块）才拆开取文字；图片不存。
+        # 其他任何结构（表格记录、未知 type、text 不是字符串）整段转 JSON 文本，一个字段都不丢。
+        if v and all(isinstance(p, str) or _is_text_block(p) or _is_image_block(p) for p in v):
+            parts = [p if isinstance(p, str) else p["text"] for p in v if not _is_image_block(p)]
+            joined = "\n".join(parts)
+            if joined.strip():
+                return _clean_text(joined)
+        return _clean_text(_json_text(v)) if v else ""
     if isinstance(v, dict):
-        return _clean_text(json.dumps(v, ensure_ascii=False))
+        return _clean_text(_json_text(v))
     return _clean_text(str(v))
 
 
-_LME_TS = re.compile(r"(\d{4})/(\d{2})/(\d{2})\s*\([A-Za-z]{3}\)\s*(\d{2}):(\d{2})")
+def _dt_to_ms(dt: datetime) -> int | None:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(timezone.utc)
+    if dt < _EPOCH or dt > _MAX_DT:
+        return None
+    d = dt - _EPOCH  # 整数运算，不经过浮点，毫秒不会差 1
+    return d.days * 86_400_000 + d.seconds * 1000 + d.microseconds // 1000
 
 
 def _parse_datetime_ms(s: str) -> int | None:
-    t = s.strip().replace("Z", "+0000")
-    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+    t = s.strip()
+    if not t:
+        return None
+    iso = re.sub(r"[zZ]$", "+00:00", t)
+    iso = re.sub(r"(\.\d{6})\d+", r"\1", iso)  # 超过 6 位的小数秒截到微秒
+    try:
+        return _dt_to_ms(datetime.fromisoformat(iso))
+    except ValueError:
+        pass
+    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
         try:
-            dt = datetime.strptime(t, fmt)
+            return _dt_to_ms(datetime.strptime(t, fmt))
         except ValueError:
             continue
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        ms = int(dt.timestamp() * 1000)
-        return ms if 0 <= ms <= MAX_TS_MS else None
-    m = _LME_TS.match(t)  # LongMemEval 式 "2023/05/20 (Sat) 02:21"
+    m = _LME_TS.fullmatch(t)  # LongMemEval 式 "2023/05/20 (Sat) 02:21"
     if m:
         y, mo, d, h, mi = map(int, m.groups())
         try:
-            return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
+            return _dt_to_ms(datetime(y, mo, d, h, mi, tzinfo=timezone.utc))
         except ValueError:
             return None
     return None
 
 
-def _clean_timestamp(v: Any) -> Any:
-    """合法值原样返回（交给字段类型照旧处理）；越界、非数、布尔、解析不了的一律当成没给时间。"""
-    if v is None:
+def _in_range(v: int | float) -> bool:
+    if isinstance(v, int):  # 超大整数不能先 math.isfinite（会 OverflowError）
+        return 0 <= v <= MAX_TS_MS
+    return math.isfinite(v) and 0 <= v <= MAX_TS_MS
+
+
+def _clean_timestamp(v: Any) -> int | float | None:
+    """先用字段自己的 lax 解析（与旧版逐字节一致），在范围内就原样保留；解析不了的字符串再按日期试；都不行当没给时间。
+    永远不返回会被字段拒绝的原始值。"""
+    try:
+        parsed = _TS_ADAPTER.validate_python(v)
+    except ValidationError:
+        parsed = None
+        if isinstance(v, str):
+            ms = _parse_datetime_ms(v)
+            if ms is not None:
+                return ms
+            try:  # 全角、阿拉伯-印度数字之类 float() 认得但字段不认的数字串
+                f = float(v)
+            except (ValueError, OverflowError):
+                return None
+            return f if _in_range(f) else None
         return None
-    if isinstance(v, bool):  # 旧版把 True/False 当成 1/0 毫秒接受了；保持原样，别让重试的 payload_sha 变
+    if parsed is None:
+        return None
+    return parsed if _in_range(parsed) else None
+
+
+def _check_id(v: Any, name: str) -> Any:
+    """身份字段不改写（改了会串用户/丢幂等）：非字符串转成字符串；含 NUL 或非法 Unicode 明确拒绝并写日志。"""
+    if v is None or isinstance(v, str):
+        s = v
+    elif isinstance(v, (int, float)) and not isinstance(v, bool):
+        s = str(v)
+    else:
         return v
-    if isinstance(v, (int, float)):
-        return v if (math.isfinite(v) and 0 <= v <= MAX_TS_MS) else None
-    if isinstance(v, str):
+    if isinstance(s, str):
+        if "\x00" in s:
+            raise ValueError(f"{name} contains NUL")
         try:
-            f = float(v)
-        except ValueError:
-            return _parse_datetime_ms(v)
-        return v if (math.isfinite(f) and 0 <= f <= MAX_TS_MS) else None
-    return None
+            s.encode("utf-8")
+        except UnicodeEncodeError as e:
+            raise ValueError(f"{name} is not valid Unicode") from e
+    return s
 
 
 class Message(BaseModel):
@@ -123,9 +188,10 @@ class Message(BaseModel):
             return {"role": "user", "content": _content_to_text(data)}
         d = dict(data)
         r = d.get("role")
-        r = r.strip().lower() if isinstance(r, str) else ""
         if r not in ("user", "assistant"):
-            r = _ROLE_ALIASES.get(r, "user")
+            r = r.strip().lower() if isinstance(r, str) else ""
+            if r not in ("user", "assistant"):
+                r = _ROLE_ALIASES.get(r, "user")
         d["role"] = r
         d["content"] = _content_to_text(d.get("content"))
         if "timestamp" in d:
@@ -137,7 +203,7 @@ class Message(BaseModel):
     def _ts(cls, v: int | float | None) -> int | float | None:
         if v is None:
             return None
-        if isinstance(v, bool) or not math.isfinite(v) or v < 0 or v > MAX_TS_MS:
+        if isinstance(v, bool) or not _in_range(v):
             return None
         return v
 
@@ -154,13 +220,16 @@ class AddRequest(BaseModel):
         if not isinstance(data, dict):
             return data
         d = dict(data)
-        if d.get("messages") is None:
+        msgs = d.get("messages")
+        if msgs is None:
             d["messages"] = []
-        elif isinstance(d["messages"], dict):
-            d["messages"] = [d["messages"]]
+        elif isinstance(msgs, (dict, str)) or (isinstance(msgs, (int, float)) and not isinstance(msgs, bool)):
+            d["messages"] = [msgs if isinstance(msgs, dict) else {"role": "user", "content": msgs}]
+        elif isinstance(msgs, list):
+            d["messages"] = [m for m in msgs if m is not None]
         for k in ("request_id", "user_id", "session_id"):
-            if d.get(k) is not None and not isinstance(d[k], str):
-                d[k] = str(d[k])
+            if k in d:
+                d[k] = _check_id(d[k], k)
         if d.get("session_id") is None:
             d["session_id"] = ""
         return d
@@ -169,7 +238,7 @@ class AddRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str = ""
     user_id: str = Field(min_length=1)
-    top_k: int | None = None  # 合同必填；缺了或非正数按上限处理，不回 422
+    top_k: int | None = None  # 合同必填；缺了、解析不了或不是正数，都按上限处理
     options: list[str] | None = None
 
     @model_validator(mode="before")
@@ -179,22 +248,26 @@ class SearchRequest(BaseModel):
             return data
         d = dict(data)
         q = d.get("query")
-        d["query"] = "" if q is None else _clean_text(q if isinstance(q, str) else str(q))
+        if q is None:
+            d["query"] = ""
+        elif not isinstance(q, str):
+            d["query"] = _json_text(q) if isinstance(q, (dict, list)) else str(q)
         tk = d.get("top_k")
-        if isinstance(tk, bool) or not isinstance(tk, (int, float, str)):
-            d["top_k"] = None
-        else:
+        try:
+            d["top_k"] = _INT_ADAPTER.validate_python(tk) if tk is not None else None
+        except ValidationError:
             try:
-                tk = int(float(tk))
+                d["top_k"] = int(float(tk)) if isinstance(tk, (str, float)) else None
             except (ValueError, OverflowError):
-                tk = None
-            d["top_k"] = tk if (tk is not None and tk >= 1) else None
+                d["top_k"] = None
+        if d["top_k"] is not None and d["top_k"] < 1:
+            d["top_k"] = None
         ops = d.get("options")
         if ops is not None:
-            d["options"] = [_clean_text(o if isinstance(o, str) else json.dumps(o, ensure_ascii=False))
-                            for o in (ops if isinstance(ops, list) else [ops]) if o is not None]
-        if d.get("user_id") is not None and not isinstance(d["user_id"], str):
-            d["user_id"] = str(d["user_id"])
+            ops = ops if isinstance(ops, list) else [ops]
+            d["options"] = [o if isinstance(o, str) else _json_text(o) for o in ops if o is not None]
+        if "user_id" in d:
+            d["user_id"] = _check_id(d["user_id"], "user_id")
         return d
 
 
@@ -248,7 +321,8 @@ def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[
             segments = build_segments(req.user_id, req.session_id, req.request_id,
                                       [m.model_dump() for m in req.messages], int(last) + 1, session_last_ts)
             with conn.cursor() as cur:
-                cur.executemany(
+                if segments:
+                    cur.executemany(
                     "INSERT INTO segments (user_id, id, session_id, request_id, seq, part, total, role, speaker_name, "
                     "ts_value, ts_granularity, ts_provenance, text, content_sha, is_rule, embedding) "
                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -350,13 +424,10 @@ app = FastAPI(title="khipu", lifespan=lifespan)
 async def _invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
     """剩下真拒的 422：记下是哪个字段、什么原因、哪个 request_id，不记正文，方便事后查。"""
     errs = [{"loc": [str(x) for x in e.get("loc", ())], "type": e.get("type"), "msg": e.get("msg")} for e in exc.errors()]
+    body = getattr(exc, "body", None)
     rid = uid = None
-    try:
-        body = json.loads((await request.body()) or b"{}")
-        if isinstance(body, dict):
-            rid, uid = body.get("request_id"), body.get("user_id")
-    except Exception:  # noqa: BLE001
-        pass
+    if isinstance(body, dict):
+        rid, uid = repr(body.get("request_id"))[:120], repr(body.get("user_id"))[:120]
     log.warning("validation 422 on %s request_id=%s user_id=%s errors=%s", request.url.path, rid, uid,
                 json.dumps(errs, ensure_ascii=False)[:2000])
     return JSONResponse(status_code=422, content={"detail": errs})
@@ -408,7 +479,7 @@ async def add(req: AddRequest) -> dict[str, Any]:
 
 @app.post("/search", dependencies=[Depends(require_auth)])
 async def search(req: SearchRequest) -> dict[str, Any]:
-    if not req.query.strip():
+    if req.query == "" and not req.options:
         return {"data": []}
     data = await run_search(req.user_id, req.query, req.options, req.top_k or config.HARD_TOP_K)
     return {"data": data}

@@ -24,11 +24,13 @@ async def _post(client: httpx.AsyncClient, inputs: list[str]) -> list[list[float
             r = await client.post("/embeddings", json=body, timeout=config.EMBED_TIMEOUT_S)
             if r.status_code == 429 or r.status_code >= 500:
                 raise httpx.HTTPStatusError(f"status {r.status_code}", request=r.request, response=r)
+            if r.status_code >= 400:  # 4xx 带上百炼的原话，同一输入反复 400 时才知道为什么
+                log.warning("embed %s: %s", r.status_code, r.text[:300])
             r.raise_for_status()
             data = sorted(r.json()["data"], key=lambda d: d["index"])
             return [d["embedding"] for d in data]
         except (httpx.HTTPError, KeyError, ValueError) as e:  # noqa: PERF203
-            log.warning("embed attempt %d failed: %s", attempt + 1, e)
+            log.warning("embed attempt %d failed: %s %s", attempt + 1, type(e).__name__, e)
             if attempt == 3:
                 return None
             await asyncio.sleep(delay)

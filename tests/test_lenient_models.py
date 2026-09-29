@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 OLD = sys.argv[1] if len(sys.argv) > 1 else "33f03a3"
 
@@ -22,6 +22,7 @@ def _models_from(src: str) -> dict:
     start = src.index("MAX_TS_MS =")
     end = src.index("# ---------- 鉴权 ----------")
     ns: dict[str, Any] = {"BaseModel": BaseModel, "Field": Field, "field_validator": field_validator,
+                          "TypeAdapter": TypeAdapter, "ValidationError": ValidationError,
                           "model_validator": model_validator, "math": math, "json": json, "re": re,
                           "datetime": datetime, "timezone": timezone, "Any": Any, "__name__": "m"}
     exec("from __future__ import annotations\n" + src[start:end], ns)
@@ -138,6 +139,37 @@ for name, p in {"empty query": {"query": "", "user_id": "u", "top_k": 5},
         check(True, f"bad search '{name}' (old 422={old_rejects('SearchRequest', p)}) -> {m.model_dump()}")
     except Exception as e:  # noqa: BLE001
         check(False, f"bad search '{name}' still rejected: {e}")
+
+# ---- 09-29 第二轮审查（Codex #6 + 三路审查）补的反例 ----
+def _msg(**kw):
+    return new["Message"].model_validate(dict({"role": "user", "content": "x"}, **kw))
+
+
+check(_msg(timestamp=4104153600000).timestamp == 4104153600000, "root cause: ts after 2100-01-01 is kept (old cap rejected it)")
+check(_msg(timestamp=10**309).timestamp is None, "310-digit int ts -> None, no OverflowError")
+m = _msg(content=[{"type": "cell", "id": "c1", "value": "28"}])
+check("c1" in m.content and "28" in m.content, f"unknown typed parts kept as JSON ({m.content!r})")
+m = _msg(content=[{"type": "text", "text": 42}])
+check("42" in m.content, f"text block with non-string text kept ({m.content!r})")
+m = _msg(content=[{"type": "text", "text": "hello"}, {"type": "image_url", "image_url": {"url": "data:"}}])
+check(m.content == "hello", "text + image blocks -> text only")
+for raw, want in [("1970-01-01T00:00:01.001Z", 1001), ("1970-01-01T00:00:01.003Z", 1003),
+                  ("2023-05-08T13:56:00+08:00", 1683525360000), ("2023-05-08T13:56:00.123456789Z", 1683554160123),
+                  ("1969-12-31T23:59:59.999999Z", None), ("2023/05/20 (Sat) 02:21junk", None),
+                  ("2023/05/20 (Sat) 02:21", 1684549260000)]:
+    got = _msg(timestamp=raw).timestamp
+    check(got == want, f"date string {raw!r} -> {got} (want {want})")
+for bad in [{"session_id": "s\x00"}, {"user_id": "u\ud800"}]:
+    body = dict({"request_id": "r", "user_id": "u", "session_id": "s", "messages": [{"role": "user", "content": "x"}]}, **bad)
+    try:
+        new["AddRequest"].model_validate(body)
+        check(False, f"bad id {bad!r} should be an explicit 422")
+    except Exception:  # noqa: BLE001
+        check(True, f"bad id {bad!r} -> explicit 422 (identity is never rewritten)")
+b = {"query": " ", "user_id": "u", "top_k": 5, "options": ["A. Paris"]}
+check(old["SearchRequest"].model_validate(b).model_dump() == new["SearchRequest"].model_validate(b).model_dump(),
+      "whitespace query with options parses exactly as before")
+check(new["SearchRequest"].model_validate({"query": "q", "user_id": "u", "top_k": True}).top_k == 1, "top_k true -> 1 as before")
 
 print("\nFAILS:", fails)
 sys.exit(1 if fails else 0)

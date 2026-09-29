@@ -135,7 +135,11 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
         else:
             base = datetime.strptime(d, "%Y-%m-%d")
             for delta in range(-3, 4):
-                rows |= idx.by_date.get((base + timedelta(days=delta)).strftime("%Y-%m-%d"), set())
+                try:  # 0001-01-01 / 9999-12-31 附近加减会越界，跳过那几天而不是 500
+                    d2 = base + timedelta(days=delta)
+                except OverflowError:
+                    continue
+                rows |= idx.by_date.get(d2.strftime("%Y-%m-%d"), set())
     return sorted(rows, key=lambda p: idx.rows[p].seq)
 
 
