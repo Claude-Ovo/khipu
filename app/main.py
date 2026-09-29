@@ -8,13 +8,16 @@ import hashlib
 import json
 import logging
 import math
+import re
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from . import config
 from .chunking import build_segments
@@ -32,24 +35,102 @@ MAX_TS_MS = 4_102_444_800_000  # 2100-01-01
 
 # ---------- 模型 ----------
 
+# 宽进原则（2026-09-29 Full 因 422 中断后改）：凡是以前会被 422 拒掉的输入，尽量接下来；以前能通过的输入，行为和
+# payload_sha 完全不变。平台对 422 不会重试，一条它认为合法、我们认为不合法的数据就能让整场 Full 失败。
+
+_ROLE_ALIASES = {"human": "user", "ai": "assistant", "bot": "assistant", "model": "assistant", "gpt": "assistant",
+                 "chatbot": "assistant", "agent": "assistant"}
+
+
+def _clean_text(s: str) -> str:
+    """去掉 Postgres 存不了的 NUL，孤立代理项换成替代字符（否则 encode 时 500）。合法文本原样返回。"""
+    if "\x00" in s:
+        s = s.replace("\x00", "")
+    try:
+        s.encode("utf-8")
+    except UnicodeEncodeError:
+        s = s.encode("utf-8", "replace").decode("utf-8")
+    return s
+
+
+def _content_to_text(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return _clean_text(v)
+    if isinstance(v, list):
+        # ContentPart[]（每项都是字符串或带 type 的 dict）：只取文字部分，按原顺序拼；图片不存
+        if v and all(isinstance(p, str) or (isinstance(p, dict) and "type" in p) for p in v):
+            parts = [p if isinstance(p, str) else p.get("text") for p in v]
+            return _clean_text("\n".join(x for x in parts if isinstance(x, str)))
+        return _clean_text(json.dumps(v, ensure_ascii=False))  # 其他结构化内容原样转成 JSON 文本，不丢
+    if isinstance(v, dict):
+        return _clean_text(json.dumps(v, ensure_ascii=False))
+    return _clean_text(str(v))
+
+
+_LME_TS = re.compile(r"(\d{4})/(\d{2})/(\d{2})\s*\([A-Za-z]{3}\)\s*(\d{2}):(\d{2})")
+
+
+def _parse_datetime_ms(s: str) -> int | None:
+    t = s.strip().replace("Z", "+0000")
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+        try:
+            dt = datetime.strptime(t, fmt)
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        ms = int(dt.timestamp() * 1000)
+        return ms if 0 <= ms <= MAX_TS_MS else None
+    m = _LME_TS.match(t)  # LongMemEval 式 "2023/05/20 (Sat) 02:21"
+    if m:
+        y, mo, d, h, mi = map(int, m.groups())
+        try:
+            return int(datetime(y, mo, d, h, mi, tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            return None
+    return None
+
+
+def _clean_timestamp(v: Any) -> Any:
+    """合法值原样返回（交给字段类型照旧处理）；越界、非数、布尔、解析不了的一律当成没给时间。"""
+    if v is None:
+        return None
+    if isinstance(v, bool):  # 旧版把 True/False 当成 1/0 毫秒接受了；保持原样，别让重试的 payload_sha 变
+        return v
+    if isinstance(v, (int, float)):
+        return v if (math.isfinite(v) and 0 <= v <= MAX_TS_MS) else None
+    if isinstance(v, str):
+        try:
+            f = float(v)
+        except ValueError:
+            return _parse_datetime_ms(v)
+        return v if (math.isfinite(f) and 0 <= f <= MAX_TS_MS) else None
+    return None
+
+
 class Message(BaseModel):
     role: str
     content: str
     timestamp: int | float | None = None
 
-    @field_validator("role")
+    @model_validator(mode="before")
     @classmethod
-    def _role(cls, v: str) -> str:
-        if v not in ("user", "assistant"):
-            raise ValueError("role must be user or assistant")
-        return v
-
-    @field_validator("content")
-    @classmethod
-    def _content(cls, v: str) -> str:
-        if not isinstance(v, str) or not v.strip():
-            raise ValueError("content must be a non-empty string")
-        return v
+    def _lenient(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return {"role": "user", "content": _content_to_text(data)}
+        d = dict(data)
+        r = d.get("role")
+        r = r.strip().lower() if isinstance(r, str) else ""
+        if r not in ("user", "assistant"):
+            r = _ROLE_ALIASES.get(r, "user")
+        d["role"] = r
+        d["content"] = _content_to_text(d.get("content"))
+        if "timestamp" in d:
+            d["timestamp"] = _clean_timestamp(d.get("timestamp"))
+        return d
 
     @field_validator("timestamp")
     @classmethod
@@ -57,22 +138,64 @@ class Message(BaseModel):
         if v is None:
             return None
         if isinstance(v, bool) or not math.isfinite(v) or v < 0 or v > MAX_TS_MS:
-            raise ValueError("timestamp must be Unix milliseconds between 1970 and 2100")
+            return None
         return v
 
 
 class AddRequest(BaseModel):
     request_id: str = Field(min_length=1)
-    messages: list[Message] = Field(min_length=1)
+    messages: list[Message] = Field(default_factory=list)
     user_id: str = Field(min_length=1)
-    session_id: str = Field(min_length=1)
+    session_id: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lenient(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        if d.get("messages") is None:
+            d["messages"] = []
+        elif isinstance(d["messages"], dict):
+            d["messages"] = [d["messages"]]
+        for k in ("request_id", "user_id", "session_id"):
+            if d.get(k) is not None and not isinstance(d[k], str):
+                d[k] = str(d[k])
+        if d.get("session_id") is None:
+            d["session_id"] = ""
+        return d
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = ""
     user_id: str = Field(min_length=1)
-    top_k: int = Field(ge=1)  # 合同必填，不给默认值
+    top_k: int | None = None  # 合同必填；缺了或非正数按上限处理，不回 422
     options: list[str] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lenient(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        q = d.get("query")
+        d["query"] = "" if q is None else _clean_text(q if isinstance(q, str) else str(q))
+        tk = d.get("top_k")
+        if isinstance(tk, bool) or not isinstance(tk, (int, float, str)):
+            d["top_k"] = None
+        else:
+            try:
+                tk = int(float(tk))
+            except (ValueError, OverflowError):
+                tk = None
+            d["top_k"] = tk if (tk is not None and tk >= 1) else None
+        ops = d.get("options")
+        if ops is not None:
+            d["options"] = [_clean_text(o if isinstance(o, str) else json.dumps(o, ensure_ascii=False))
+                            for o in (ops if isinstance(ops, list) else [ops]) if o is not None]
+        if d.get("user_id") is not None and not isinstance(d["user_id"], str):
+            d["user_id"] = str(d["user_id"])
+        return d
 
 
 # ---------- 鉴权 ----------
@@ -223,6 +346,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="khipu", lifespan=lifespan)
 
 
+@app.exception_handler(RequestValidationError)
+async def _invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """剩下真拒的 422：记下是哪个字段、什么原因、哪个 request_id，不记正文，方便事后查。"""
+    errs = [{"loc": [str(x) for x in e.get("loc", ())], "type": e.get("type"), "msg": e.get("msg")} for e in exc.errors()]
+    rid = uid = None
+    try:
+        body = json.loads((await request.body()) or b"{}")
+        if isinstance(body, dict):
+            rid, uid = body.get("request_id"), body.get("user_id")
+    except Exception:  # noqa: BLE001
+        pass
+    log.warning("validation 422 on %s request_id=%s user_id=%s errors=%s", request.url.path, rid, uid,
+                json.dumps(errs, ensure_ascii=False)[:2000])
+    return JSONResponse(status_code=422, content={"detail": errs})
+
+
 @app.exception_handler(Exception)
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     log.exception("unhandled error on %s", request.url.path)
@@ -243,6 +382,10 @@ async def add(req: AddRequest) -> dict[str, Any]:
     saved = await asyncio.to_thread(_saved_response, req.user_id, req.request_id, payload_sha)
     if saved is not None:
         return saved
+    kept = [m for m in req.messages if m.content.strip()]
+    if len(kept) != len(req.messages):  # 空内容以前回 422；现在跳过这几条，其余照常写（合法请求不会走到这里）
+        log.info("add %s: skipped %d empty message(s) of %d", req.request_id, len(req.messages) - len(kept), len(req.messages))
+        req = req.model_copy(update={"messages": kept})
     # 先算向量再进事务：向量文本只含说话人和正文，不依赖库里状态，所以能在写入前算好、随段一起落库。
     # 算不出来（限流、断网）就回 503 让平台稍后重试（合同里 503 是可重试的），不留没向量的段——复现时库的状态必须一样。
     vectors: dict[str, list[float]] = {}
@@ -265,5 +408,7 @@ async def add(req: AddRequest) -> dict[str, Any]:
 
 @app.post("/search", dependencies=[Depends(require_auth)])
 async def search(req: SearchRequest) -> dict[str, Any]:
-    data = await run_search(req.user_id, req.query, req.options, req.top_k)
+    if not req.query.strip():
+        return {"data": []}
+    data = await run_search(req.user_id, req.query, req.options, req.top_k or config.HARD_TOP_K)
     return {"data": data}

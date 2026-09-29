@@ -71,7 +71,7 @@ r = c.post("/search", json={"query": "anything", "user_id": f"{U}:other", "top_k
 check(r.status_code == 200 and r.json() == {"data": []}, "unknown user -> {data: []} (isolation)")
 
 r = c.post("/search", json={"query": "", "user_id": U, "top_k": 100})
-check(r.status_code == 422, f"empty query -> 4xx (got {r.status_code})")
+check(r.status_code == 200 and r.json() == {"data": []}, f"empty query -> 200 {{data: []}} (lenient since 09-29; got {r.status_code})")
 
 t = time.time()
 r = c.post("/search", json={"query": "cat vet shot", "user_id": U, "top_k": 100})
@@ -111,9 +111,9 @@ check(r.status_code == 200 and len(d) == 1, "same session_id under another user_
 r = c.post("/search", json={"query": "meeting on 2023-02-30 or 2023-99-01?", "user_id": U, "top_k": 100})
 check(r.status_code == 200, f"invalid calendar dates in query -> still 200 (got {r.status_code})")
 r = c.post("/add", json=dict(same, request_id=f"{U2}:bad-ts", messages=[{"role": "user", "content": "x", "timestamp": 1e30}]))
-check(r.status_code == 422, f"absurd timestamp -> 422 (got {r.status_code})")
+check(r.status_code == 200, f"absurd timestamp -> accepted, stored without time (lenient since 09-29; got {r.status_code})")
 r = c.post("/search", json={"query": "hello", "user_id": U})
-check(r.status_code == 422, f"missing top_k -> 422 (got {r.status_code})")
+check(r.status_code == 200 and len(r.json()["data"]) <= 100, f"missing top_k -> 200, capped at 100 (lenient since 09-29; got {r.status_code})")
 
 print("\nFAILS:", fails)
 sys.exit(1 if fails else 0)
