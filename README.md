@@ -1,6 +1,6 @@
-# Homing（洄游）
+# Khipu（结绳）
 
-Entry for the 2nd Agent Memory Challenge (Agent Memory Leaderboard), textual track, open-source methods group. Salmon grow up at sea and swim back to the river they were born in, guided by its smell; growing and returning are one motion. Repository working name: aml-memory.
+Entry for the 2nd Agent Memory Challenge (Agent Memory Leaderboard), textual track, open-source methods group. Before writing, people remembered by tying knots in cord: the *I Ching* records that "in high antiquity they governed by knotted cords" (上古结绳而治), and on the other side of the Pacific the Inca ran an empire's census and accounts on khipu. Two civilizations that never met arrived at the same answer to the problem of memory. (Earlier name: Homing.)
 
 The system exposes only the two endpoints the platform calls, `POST /add` and `POST /search` (plus an unauthenticated `GET /health`), and holds one position: **memory that does not rewrite what it stores.** Every message is kept verbatim, cut into small self-describing segments that carry their own date, weekday and speaker, and returned in an order chosen by relevance alone. No LLM is used anywhere in v1.
 

@@ -220,7 +220,7 @@ async def lifespan(app: FastAPI):
         pool.close()
 
 
-app = FastAPI(title="homing", lifespan=lifespan)
+app = FastAPI(title="khipu", lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
@@ -234,7 +234,7 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 @app.get("/health")
 async def health() -> dict[str, Any]:
     await asyncio.to_thread(_health_check)
-    return {"ok": True, "service": "homing"}
+    return {"ok": True, "service": "khipu"}
 
 
 @app.post("/add", dependencies=[Depends(require_auth)])
