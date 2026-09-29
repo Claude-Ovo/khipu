@@ -37,6 +37,7 @@ Requires PostgreSQL 16 with the `vector` extension. `deploy/` holds the systemd 
 | Tested concurrency | Add 16 / Search 16 (official Smoke, 2026-09-29: 134 Add + 48 Search, all 200) |
 | Limits | `top_k` ≤ 100; response packed whole under a 60k-token budget, earlier items first; Add is idempotent on `(user_id, request_id)` |
 | Restarts | stateless: all memory lives in PostgreSQL; in-process indexes are rebuilt from the database on first use after a restart |
+| Run config (first Full) | `RERANK_ENABLED=1`, `RERANK_TOPN=200`, `SEARCH_TIMEOUT_S=30`, `RERANK_TIMEOUT_S=45`, `EMBED_TIMEOUT_S=10`, `INDEX_CACHE_USERS=16`; timeouts only change behaviour when an upstream call stalls. Applied with `deploy/preflight-full.sh`. |
 
 Reproduction: `tests/manifest.py` prints the commit, package versions and model settings of a running deployment; a manifest is saved on the server before every official run.
 

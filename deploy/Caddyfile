@@ -12,9 +12,13 @@
 	}
 	encode gzip
 	reverse_proxy 127.0.0.1:8080 {
+		# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
+		lb_try_duration 60s
+		lb_try_interval 250ms
 		transport http {
 			read_timeout 1800s
 			write_timeout 1800s
+			keepalive 60s
 		}
 	}
 }
@@ -22,9 +26,13 @@
 aml.akeovo.com {
 	encode gzip
 	reverse_proxy 127.0.0.1:8080 {
+		# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
+		lb_try_duration 60s
+		lb_try_interval 250ms
 		transport http {
 			read_timeout 1800s
 			write_timeout 1800s
+			keepalive 60s
 		}
 	}
 }
