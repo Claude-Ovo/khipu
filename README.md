@@ -24,6 +24,22 @@ python tests/replay_locomo.py --base http://127.0.0.1:8080 --token <token> --dat
 
 Requires PostgreSQL 16 with the `vector` extension. `deploy/` holds the systemd unit, Caddy config and a deploy script used for the competition server.
 
+## Deployment (competition)
+
+| item | value |
+|---|---|
+| Add | `POST https://43.128.132.126/add` |
+| Search | `POST https://43.128.132.126/search` |
+| Health | `GET https://43.128.132.126/health` (no auth) |
+| Auth | `Authorization: Bearer <token>` (token issued with the evaluation key, not published) |
+| Models | Embedding `text-embedding-v4` (Alibaba Bailian, 1024-dim); reranker `gte-rerank-v2` (Alibaba Bailian) on the first 200 fused candidates. **No generative LLM is used in Add or Search.** |
+| Host | one server: 2 vCPU / 4 GB RAM / 90 GB disk, Ubuntu 24.04, PostgreSQL 16 + pgvector, uvicorn behind Caddy (TLS) |
+| Tested concurrency | Add 16 / Search 16 (official Smoke, 2026-09-29: 134 Add + 48 Search, all 200) |
+| Limits | `top_k` ≤ 100; response packed whole under a 60k-token budget, earlier items first; Add is idempotent on `(user_id, request_id)` |
+| Restarts | stateless: all memory lives in PostgreSQL; in-process indexes are rebuilt from the database on first use after a restart |
+
+Reproduction: `tests/manifest.py` prints the commit, package versions and model settings of a running deployment; a manifest is saved on the server before every official run.
+
 ## Results so far (LoCoMo replay, any-hit@k on gold evidence, 1982 questions)
 
 | version | any@10 | any@100 |
