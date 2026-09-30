@@ -1,0 +1,38 @@
+{
+ "questions_in_category": 282,
+ "offset": 0,
+ "ran": 282,
+ "stopped": null,
+ "pair": "fusion",
+ "usage": {
+  "embed": {
+   "calls": 282,
+   "ok": 282,
+   "failed": 0,
+   "tokens": 3094,
+   "avg_ms": 170
+  },
+  "rerank": {
+   "calls": 564,
+   "ok": 564,
+   "failed": 0,
+   "tokens": 7485194,
+   "avg_ms": 238,
+   "skipped": 0,
+   "timeouts": 0
+  }
+ },
+ "cost_yuan": 5.9897,
+ "config": {
+  "RERANK_MODEL": "gte-rerank-v2",
+  "RERANK_TOPN": 200,
+  "RERANK_MIX": 1.0,
+  "RERANK_DOC_CHARS": 0,
+  "BUDGET_TOKENS": 60000,
+  "CHANNEL_TOPN_MULT": 2,
+  "NEIGHBOR_CAP_RATIO": 0.05,
+  "HOP_ENABLED": false,
+  "top_k": 100
+ },
+ "commit": "d324cc3d6966a7abf968bb6cd06657c27aebd1d8"
+}

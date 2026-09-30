@@ -1,0 +1,34 @@
+{
+ "dataset": "locomo",
+ "questions": 1982,
+ "offset": 0,
+ "ran": 1982,
+ "stopped": null,
+ "usage": {
+  "embed": {
+   "calls": 1970,
+   "ok": 1970,
+   "failed": 0,
+   "tokens": 26432,
+   "avg_ms": 340
+  },
+  "rerank": {
+   "calls": 0,
+   "ok": 0,
+   "failed": 0,
+   "tokens": 0,
+   "avg_ms": 0,
+   "skipped": 0,
+   "timeouts": 0
+  }
+ },
+ "cost_yuan": 0.0132,
+ "config": {
+  "RERANK_ENABLED": false,
+  "HOP_ENABLED": false,
+  "CHANNEL_TOPN_MULT": 2,
+  "RRF_K": 60,
+  "top_k": 100
+ },
+ "commit": "1e6f8fb0aa101f0190c88367c571319ff72cf2ac"
+}

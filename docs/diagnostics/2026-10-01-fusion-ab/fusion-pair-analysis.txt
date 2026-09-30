@@ -1,0 +1,155 @@
+questions: 280  (excluded: unmapped gold / no gold)
+rerank status: {'old': ['ok'], 'new': ['ok']}
+cost so far (last row): ¥ 5.9897
+
+=== exact-turn metrics (all gold turns of the question inside the returned top-k) ===
+metric        old    new  only old  only new         p
+all@10         87     88         1         2  1.00e+00
+all@100       190    197         4        11  1.18e-01
+gold turns returned in top-100: old 737/874  new 751/874
+all gold inside rerank window (200): old 202  new 218
+
+=== questions whose all@100 changes ===
+[GAINED] conv0 q7 | "What is Caroline's relationship status?"
+    D3:13    old: fused   86 win=1 rerank   61 final   66 | new: fused   68 win=1 rerank   62 final   67
+    D2:14    old: fused  208 win=0 rerank  208 final None | new: fused  152 win=1 rerank   89 final   94
+[GAINED] conv0 q55 | 'What subject have Caroline and Melanie both painted?'
+    D14:5    old: fused  206 win=0 rerank  206 final None | new: fused  196 win=1 rerank   42 final   47
+    D8:6     old: fused  165 win=1 rerank   30 final   35 | new: fused  138 win=1 rerank   30 final   35
+[LOST] conv3 q55 | 'What is Joanna inspired by?'
+    D4:6     old: fused   98 win=1 rerank   91 final   96 | new: fused   92 win=1 rerank   96 final None
+    D7:6     old: fused   18 win=1 rerank    9 final    9 | new: fused   15 win=1 rerank    9 final    9
+    D11:11   old: fused    7 win=1 rerank    1 final    1 | new: fused    5 win=1 rerank    1 final    1
+    D26:3    old: fused    8 win=1 rerank   24 final   29 | new: fused   12 win=1 rerank   24 final   29
+    D26:7    old: fused    6 win=1 rerank    5 final    5 | new: fused    8 win=1 rerank    5 final    5
+    D25:10   old: fused   19 win=1 rerank   22 final   27 | new: fused   16 win=1 rerank   22 final   27
+[GAINED] conv3 q75 | "What are Nate's favorite desserts?"
+    D3:4     old: fused  229 win=0 rerank  229 final None | new: fused  142 win=1 rerank   36 final   41
+    D3:10    old: fused   81 win=1 rerank   16 final   16 | new: fused   57 win=1 rerank   16 final   16
+    D21:10   old: fused   14 win=1 rerank    2 final    2 | new: fused   14 win=1 rerank    2 final    2
+    D3:12    old: fused   88 win=1 rerank   21 final   26 | new: fused   58 win=1 rerank   21 final   26
+[GAINED] conv3 q79 | 'How many screenplays has Joanna written?'
+    D2:3     old: fused  163 win=1 rerank    6 final    6 | new: fused  116 win=1 rerank    6 final    6
+    D4:10    old: fused   16 win=1 rerank    3 final    3 | new: fused    8 win=1 rerank    3 final    3
+    D5:1     old: fused  155 win=1 rerank   43 final   48 | new: fused  111 win=1 rerank   48 final   53
+    D12:13   old: fused  236 win=0 rerank  236 final None | new: fused  177 win=1 rerank   31 final   36
+    D12:14   old: fused  260 win=0 rerank  260 final None | new: fused  195 win=1 rerank   19 final   19
+[LOST] conv3 q83 | 'What are the skills that Nate has helped others learn?'
+    D18:8    old: fused   29 win=1 rerank   95 final  100 | new: fused   18 win=1 rerank   97 final None
+    D26:12   old: fused   25 win=1 rerank    3 final    3 | new: fused   23 win=1 rerank    3 final    3
+    D14:16   old: fused  132 win=1 rerank    2 final    2 | new: fused   91 win=1 rerank    2 final    2
+[GAINED] conv4 q7 | 'Which geographical locations has Tim been to?'
+    D1:18    old: fused    6 win=1 rerank    2 final    2 | new: fused    1 win=1 rerank    2 final    2
+    D3:2     old: fused  191 win=1 rerank   48 final   53 | new: fused  146 win=1 rerank   53 final   58
+    D14:16   old: fused  206 win=0 rerank  206 final None | new: fused  169 win=1 rerank   13 final   13
+[GAINED] conv4 q14 | 'What kind of writing does Tim do?'
+    D2:1     old: fused  210 win=0 rerank  210 final None | new: fused  166 win=1 rerank   37 final   42
+    D4:3     old: fused  133 win=1 rerank   30 final   35 | new: fused  105 win=1 rerank   30 final   35
+    D4:5     old: fused   11 win=1 rerank    1 final    1 | new: fused   10 win=1 rerank    1 final    1
+    D15:3    old: fused    9 win=1 rerank    5 final    5 | new: fused    3 win=1 rerank    5 final    5
+[GAINED] conv4 q18 | 'What authors has Tim read books from?'
+    D1:14    old: fused   80 win=1 rerank   44 final   49 | new: fused   67 win=1 rerank   45 final   50
+    D2:7     old: fused   70 win=1 rerank   42 final   47 | new: fused   57 win=1 rerank   43 final   48
+    D4:7     old: fused  204 win=0 rerank  204 final None | new: fused  163 win=1 rerank   29 final   34
+    D5:15    old: fused    7 win=1 rerank    1 final    1 | new: fused    5 win=1 rerank    1 final    1
+    D11:26   old: fused  134 win=1 rerank   22 final   27 | new: fused  113 win=1 rerank   22 final   27
+    D20:21   old: fused   14 win=1 rerank   12 final   12 | new: fused   18 win=1 rerank   12 final   12
+    D26:36   old: fused  156 win=1 rerank   87 final   92 | new: fused  156 win=1 rerank   92 final   97
+[GAINED] conv4 q21 | 'Which US cities does John mention visiting to Tim?'
+    D3:19    old: fused   13 win=1 rerank    5 final    5 | new: fused    7 win=1 rerank    5 final    5
+    D6:3     old: fused  233 win=0 rerank  233 final None | new: fused  173 win=1 rerank   13 final   13
+    D9:6     old: fused    3 win=1 rerank    1 final    1 | new: fused    1 win=1 rerank    1 final    1
+[LOST] conv4 q38 | 'which country has Tim visited most frequently in his travels?'
+    D1:18    old: fused   10 win=1 rerank    5 final    5 | new: fused    4 win=1 rerank    5 final    5
+    D13:1    old: fused   64 win=1 rerank   29 final   34 | new: fused   50 win=1 rerank  104 final None
+    D18:1    old: fused  184 win=1 rerank    9 final    9 | new: fused  150 win=1 rerank    9 final    9
+[GAINED] conv6 q8 | 'How many pets does James have?'
+    D1:12    old: fused  214 win=0 rerank  214 final None | new: fused  144 win=1 rerank   69 final   74
+    D1:14    old: fused  171 win=1 rerank   25 final   30 | new: fused  112 win=1 rerank   26 final   31
+    D5:1     old: fused   39 win=1 rerank   39 final   44 | new: fused   16 win=1 rerank   40 final   45
+[GAINED] conv7 q1 | 'Which of Deborah`s family and friends have passed away?'
+    D1:5     old: fused    3 win=1 rerank    4 final    4 | new: fused    1 win=1 rerank    4 final    4
+    D2:1     old: fused    4 win=1 rerank    1 final    1 | new: fused    2 win=1 rerank    1 final    1
+    D6:4     old: fused  247 win=0 rerank  247 final None | new: fused  164 win=1 rerank    8 final    8
+[LOST] conv8 q77 | 'How does Evan spend his time with his bride after the wedding?'
+    D23:15   old: fused  121 win=1 rerank   75 final   80 | new: fused  117 win=1 rerank   76 final   81
+    D23:23   old: fused   20 win=1 rerank   45 final   50 | new: fused   20 win=1 rerank   45 final   50
+    D23:25   old: fused   43 win=1 rerank   27 final   32 | new: fused   44 win=1 rerank   27 final   32
+    D24:9    old: fused  188 win=1 rerank   93 final   98 | new: fused  216 win=0 rerank  216 final None
+[GAINED] conv9 q60 | 'What gifts has Calvin received from his artist friends?'
+    D4:24    old: fused  238 win=0 rerank  238 final None | new: fused  193 win=1 rerank   36 final   41
+    D4:26    old: fused    1 win=1 rerank    1 final    1 | new: fused    1 win=1 rerank    1 final    1
+    D16:14   old: fused    5 win=1 rerank    2 final    2 | new: fused    2 win=1 rerank    2 final    2
+changed: 15
+
+=== focus questions: gold turns, speakers, both arms' final ranks; audit equivalents ===
+
+## conv0 q7 | What is Caroline's relationship status? | gold answer: Single
+   all@100 old=0 new=1   hops@100 old=1 new=2
+   GOLD D3:13 (Caroline) final old=66 new=67 | "Yeah, I'm really lucky to have them. They've been there through everything, I've known these friends for 4 years, since I moved from my home country. Their love and help have been so important especially after that tough"
+   GOLD D2:14 (Caroline) final old=None new=94 | "I'm thrilled to make a family for kids who need one. It'll be tough as a single parent, but I'm up for the challenge!"
+        audit 09-30: valid, fact_in_returned=partial :: Caroline explicitly calls herself 'a single parent' here, the only direct statement of her status. Returned only has D3:13 'after that tough breakup', which weakly implies single.
+        equiv D3:13 (Caroline) final old=66 new=67 | "Yeah, I'm really lucky to have them. They've been there through everything, I've known these friends for 4 years, since I moved from my home country. Their love"
+
+## conv3 q79 | How many screenplays has Joanna written? | gold answer: three
+   all@100 old=0 new=1   hops@100 old=3 new=5
+   GOLD D2:3 (Joanna) final old=6 new=6 | "Woo! I finally finished my first full screenplay and printed it last Friday. I've been working on for a while, such a relief to have it all done!"
+   GOLD D4:10 (Joanna) final old=3 new=3 | "Yeah Nate, your cooking is amazing! I can't stop thinking about the screenplay, so I just started writing another one while I wait to hear back about how the first one did."
+   GOLD D5:1 (Joanna) final old=48 new=53 | "Hey Nate, it's been a minute! I wrapped up my second script, and the feels have been wild. Sometimes I'm so relieved, but other times I just feel anxious about what comes next. It's a mix of excitement and terror, thinki"
+   GOLD D12:13 (Nate) final old=None new=36 | 'Wow, that looks great Joanna! Is that your third one?'
+        audit 09-30: valid, fact_in_returned=partial :: Nate's question 'Is that your third one?' carries the count and is confirmed by D12:14 'Yep!'; returned only has the same-session hint D12:2 ('Just finished something') with no 'third'.
+        equiv D12:2 (Joanna) final old=99 new=None | 'Hey Nate! Just finished something - pretty wild journey!'
+   GOLD D12:14 (Joanna) final old=None new=19 | "Yep! I chose to write about this because it's really personal. It's about loss, identity, and connection. It's a story I've had for ages but just got the guts to write it. It was hard, but I'm so proud of it."
+        audit 09-30: valid, fact_in_returned=partial :: Joanna's 'Yep!' confirms the third screenplay only via D12:13's question; the 'third' fact is absent from returned apart from the vague D12:2 hint.
+        equiv D12:2 (Joanna) final old=99 new=None | 'Hey Nate! Just finished something - pretty wild journey!'
+
+## conv4 q7 | Which geographical locations has Tim been to? | gold answer: California, London, the Smoky Mountains
+   all@100 old=0 new=1   hops@100 old=2 new=3
+   GOLD D1:18 (Tim) final old=2 new=2 | "I went to a place in London a few years ago - it was like walking into a Harry Potter movie! I also went on a tour which was amazing. Have you been to any of the real Potter places? I'd love to explore them someday!"
+   GOLD D3:2 (Tim) final old=53 new=58 | "Congrats on your achievement! I'm so proud of you. Last week, I had a nice chat with a Harry Potter fan in California. It was magical!"
+   GOLD D14:16 (Tim) final old=None new=13 | "I snapped that pic on my trip to the Smoky Mountains last year. It was incredible seeing it in person. Nature's really something else!"
+        audit 09-30: valid, fact_in_returned=no :: Tim says he took the photo on his trip to the Smoky Mountains last year. The location appears nowhere in returned; D14:12 r38 only shows a mountain-sunset image with no place name.
+
+## conv4 q14 | What kind of writing does Tim do? | gold answer: comments on favorite books in a fantasy literature forum, articles on fantasy novels, studying characters, themes, and making book recommendations, writing a fantasy novel
+   all@100 old=0 new=1   hops@100 old=3 new=4
+   GOLD D2:1 (Tim) final old=None new=42 | 'Last night I joined a fantasy literature forum and had a great talk about my fave books. It was so enriching!'
+        audit 09-30: valid, fact_in_returned=partial :: Gold component 'comments on favorite books in a fantasy literature forum' comes from D2:1; returned D4:3 only mentions Tim found an opportunity on a fantasy lit forum, not discussing his favorite book
+        equiv D4:3 (Tim) final old=35 new=35 | "Thanks! I found this opportunity on a fantasy lit forum and thought it'd be perfect since I love fantasy. I shared my ideas with the magazine and they liked the"
+   GOLD D4:3 (Tim) final old=35 new=35 | "Thanks! I found this opportunity on a fantasy lit forum and thought it'd be perfect since I love fantasy. I shared my ideas with the magazine and they liked them! It's been awesome to spread my love of fantasy."
+   GOLD D4:5 (Tim) final old=1 new=1 | "Thanks! I've been writing about different fantasy novels, studying characters, themes, and making book recommendations."
+   GOLD D15:3 (Tim) final old=5 new=5 | "That castle looks amazing! I hope I get to visit it someday. My writing is going well: I'm in the middle of fantasy novel and it's a bit nerve-wracking but so exciting! All my hard work is paying off. Writing brings such"
+
+## conv4 q21 | Which US cities does John mention visiting to Tim? | gold answer: Seattle, Chicago, New York
+   all@100 old=0 new=1   hops@100 old=2 new=3
+   GOLD D3:19 (John) final old=5 new=5 | "It's Seattle, I'm stoked for my game there next month! It's one of my favorite cities to explore - super vibrant!"
+   GOLD D6:3 (John) final old=None new=13 | "I was in Chicago, it was awesome! It had so much energy and the locals were really friendly. It's great to experience other cultures and connect with new folks."
+        audit 09-30: valid, fact_in_returned=no :: John names Chicago as the place he visited. Returned D6:1 (r30, 'took a trip to a new place') and D6:2 (r7, Tim asking where) are present, but no returned turn mentions Chicago.
+   GOLD D9:6 (John) final old=1 new=1 | "Wow, Tim, that's an awesome book collection! It's cool to escape to different worlds with a hobby. By the way, I love discovering new cities - check out this pic from one of my trips to New York City!"
+
+## conv7 q1 | Which of Deborah`s family and friends have passed away? | gold answer: mother, father, her friend Karlie
+   all@100 old=0 new=1   hops@100 old=2 new=3
+   GOLD D1:5 (Deborah) final old=4 new=4 | 'It was full of memories, she passed away a few years ago. This is our last photo together.'
+   GOLD D2:1 (Deborah) final old=1 new=1 | "Hey Jolene, sorry to tell you this but my dad passed away two days ago. It's been really tough on us all - his sudden death left us all kinda shell-shocked. I'm trying to channel my grief by spending more time with famil"
+   GOLD D6:4 (Deborah) final old=None new=8 | "The roses and dahlias bring me peace. I lost a friend last week, so I've been spending time in the garden to find some comfort."
+        audit 09-30: valid, fact_in_returned=partial :: Deborah states she lost a friend last week; D6:8 in the same session names her as Karlie. Returned D6:8 ('Memories keep our loved ones close... last photo with Karlie... our last one') only implies th
+        equiv D6:8 (Deborah) final old=17 new=20 | 'Memories keep our loved ones close. This is the last photo with Karlie which was taken last summer when we hiked. It was our last one. We had such a great time!'
+        equiv D6:6 (Deborah) final old=94 new=99 | "Thanks for the kind words. It's been tough, but I'm comforted by remembering our time together. It reminds me of how special life is."
+
+## conv7 q82 | Which locations does Deborah practice her yoga at? | gold answer: at her mother's old home, park, yoga studio, beach
+   all@100 old=0 new=0   hops@100 old=4 new=4
+   GOLD D2:11 (Deborah) final old=35 new=35 | 'This is one of the places where I do it.'
+   GOLD D2:13 (Deborah) final old=None new=None | "That's my old home. I go there now and then for my mom, who passed away. Sitting in that spot by the window gives me peace."
+        audit 09-30: valid, fact_in_returned=partial :: Answers Jolene's 'Where is it?' about the yoga place in D2:11: her late mother's old home. The returned turns only hint at it: D2:11 (a place where she does yoga, living room with window), D2:15 (feel
+        equiv D2:11 (Deborah) final old=35 new=35 | 'This is one of the places where I do it.'
+        equiv D2:15 (Deborah) final old=96 new=99 | "Yeah, it's special. I can feel her presence when I sit there and it comforts me."
+        equiv D1:7 (Deborah) final old=91 new=95 | "My mom's house had a special bench near the window. She loved to sit there every morning and take in the view. I come to sit here sometimes, it helps me stay co"
+   GOLD D3:6 (Deborah) final old=1 new=1 | 'It happened at yoga in the park.'
+   GOLD D4:12 (Deborah) final old=28 new=28 | "When things get tough, just take a deep breath and remember why you're doing this. This is where I spend a lot of my time, teaching yoga. It's a great way to find balance and reconnect with ourselves. I bonded with Anna "
+   GOLD D6:10 (Deborah) final old=3 new=3 | "I've been blessed to travel to a few places and Bali last year was one of my favs. It was a gorgeous island that gave me peace, great for yoga."
+
+## conv8 q77 | How does Evan spend his time with his bride after the wedding? | gold answer: family get-together, honeymoon in Canada to see snowy landscapes, ski, taste local cuisine and do some snowshoeing
+   all@100 old=1 new=0   hops@100 old=4 new=3
+   GOLD D23:15 (Evan) final old=80 new=81 | "Thanks, Sam! We're having a family get-together tonight and enjoying some homemade lasagna. Super excited! By the way, I've started a new diet—limiting myself to just two ginger snaps a day. What's on your menu tonight?\t"
+   GOLD D23:23 (Evan) final old=50 new=50 | "Thanks Sam! We're off to Canada next month for our honeymoon. So excited to create some awesome memories. Looking forward to exploring the beautiful snowy landscapes there."
+   GOLD D23:25 (Evan) final old=32 new=32 | "We're planning to ski, try the local cuisine, and enjoy the beautiful views. We're really excited!"
+   GOLD D24:9 (Evan) final old=98 new=None | "Yeah, they were understanding, which was great. But it's a good reminder to be more careful. We all make mistakes, but it's important to learn from them. Speaking of, my partner and I tried snowshoeing this weekend. It w"
