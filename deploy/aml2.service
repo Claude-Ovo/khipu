@@ -1,0 +1,18 @@
+[Unit]
+Description=khipu v2 (AML Add/Search API, second-shot code, database aml2)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/srv/aml/app2
+# 先读线上那份（key、token、模型名），再用 .env2 覆盖库名和第二枪改过的运行值
+EnvironmentFile=/srv/aml/.env
+EnvironmentFile=/srv/aml/.env2
+ExecStart=/srv/aml/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8082 --workers 1 --timeout-keep-alive 75
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

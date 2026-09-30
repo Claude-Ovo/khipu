@@ -3,6 +3,20 @@
 	default_sni 43.128.132.126
 }
 
+# 两套实例并存（2026-09-30 起）：
+#   /add /search /health        → :8080  第一次 Full 用的 v0.3.1 和它的库，原样留着给主办方复现
+#   /v2/add /v2/search /v2/health → :8082  第二枪的代码，独立的库 aml2；官网「新增版本」绑到 /v2/*
+(upstream) {
+	# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
+	lb_try_duration 60s
+	lb_try_interval 250ms
+	transport http {
+		read_timeout 1800s
+		write_timeout 1800s
+		keepalive 60s
+	}
+}
+
 # akeovo.com 在国内被按 SNI 封了；IP 证书握手里没有域名
 43.128.132.126 {
 	tls {
@@ -11,28 +25,28 @@
 		}
 	}
 	encode gzip
-	reverse_proxy 127.0.0.1:8080 {
-		# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
-		lb_try_duration 60s
-		lb_try_interval 250ms
-		transport http {
-			read_timeout 1800s
-			write_timeout 1800s
-			keepalive 60s
+	handle_path /v2/* {
+		reverse_proxy 127.0.0.1:8082 {
+			import upstream
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080 {
+			import upstream
 		}
 	}
 }
 
 aml.akeovo.com {
 	encode gzip
-	reverse_proxy 127.0.0.1:8080 {
-		# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
-		lb_try_duration 60s
-		lb_try_interval 250ms
-		transport http {
-			read_timeout 1800s
-			write_timeout 1800s
-			keepalive 60s
+	handle_path /v2/* {
+		reverse_proxy 127.0.0.1:8082 {
+			import upstream
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080 {
+			import upstream
 		}
 	}
 }

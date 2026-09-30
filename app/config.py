@@ -67,6 +67,7 @@ HARD_TOP_K = 100
 
 # 缓存
 INDEX_CACHE_USERS = _int("INDEX_CACHE_USERS", 64)
+THREAD_POOL_SIZE = _int("THREAD_POOL_SIZE", 16)   # to_thread 共用的线程池；默认值 min(32, cpu+4) 在 2 核上只有 6
 
 # 事件循环延迟看门狗
 LOOP_LAG_WARN_S = _float("LOOP_LAG_WARN_S", 0.5)

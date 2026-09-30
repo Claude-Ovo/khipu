@@ -10,6 +10,7 @@ import logging
 import math
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -27,6 +28,7 @@ from .embed import embed_texts
 from .httpclient import aclose as close_http, usage
 from .index import invalidate
 from .search import search as run_search
+from . import watchdog
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -410,13 +412,17 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("AML_API_TOKEN is empty; set it, or AML_ALLOW_NO_AUTH=1 for a local smoke server")
     if config.API_TOKEN in config.PLACEHOLDER_TOKENS:
         raise RuntimeError("AML_API_TOKEN is still the example value; generate a real one")
+    # 数据库读写、建索引、五路召回的 CPU 活都走 to_thread；默认线程池在 2 核机器上只有 6 个线程，
+    # 16 路 Add + 16 路 Search 一起来会排队。开大一点，事件循环那条线程才能一直空着收请求
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=config.THREAD_POOL_SIZE, thread_name_prefix="aml"))
     pool.open()
     await asyncio.to_thread(init_schema)
-    task = asyncio.create_task(_backfill_vectors_loop())
+    tasks = [asyncio.create_task(_backfill_vectors_loop()), asyncio.create_task(watchdog.run())]
     try:
         yield
     finally:
-        task.cancel()
+        for t in tasks:
+            t.cancel()
         await close_http()
         pool.close()
 
@@ -448,7 +454,7 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 @app.get("/health")
 async def health() -> dict[str, Any]:
     await asyncio.to_thread(_health_check)
-    return {"ok": True, "service": "khipu", "usage": usage.snapshot()}
+    return {"ok": True, "service": "khipu", "usage": usage.snapshot(), "loop": watchdog.snapshot()}
 
 
 @app.post("/add", dependencies=[Depends(require_auth)])
