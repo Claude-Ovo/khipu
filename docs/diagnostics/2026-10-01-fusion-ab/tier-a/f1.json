@@ -1,0 +1,130 @@
+{
+ "implementation": "token F1 after SQuAD-style normalization (lowercase, strip punctuation, drop a/an/the); multiset overlap; not the official metric",
+ "questions": [
+  {
+   "conv": 0,
+   "qi": 7,
+   "gold_answer": "Single",
+   "old": 0.2857,
+   "new": 0.5,
+   "old_repeat": 0.2
+  },
+  {
+   "conv": 0,
+   "qi": 55,
+   "gold_answer": "Sunsets",
+   "old": 1.0,
+   "new": 1.0,
+   "old_repeat": 1.0
+  },
+  {
+   "conv": 3,
+   "qi": 55,
+   "gold_answer": "Personal experiences,her own journey ofself discovery, Nate,nature, validation,stories about findingcourage and takingrisks, people she knows, stuff she sees, imagination",
+   "old": 0.2381,
+   "new": 0.1304,
+   "old_repeat": 0.2632
+  },
+  {
+   "conv": 3,
+   "qi": 75,
+   "gold_answer": "coconut milk icecream, dairy-free chocolate cake with berries, chocolate and mixed-berry icecream, dairy-free chocolate mousse",
+   "old": 0.5217,
+   "new": 0.5217,
+   "old_repeat": 0.5217
+  },
+  {
+   "conv": 3,
+   "qi": 79,
+   "gold_answer": "three",
+   "old": 0.5,
+   "new": 0.5,
+   "old_repeat": 0.5
+  },
+  {
+   "conv": 3,
+   "qi": 83,
+   "gold_answer": "coconut milk ice cream recipe, reset high scores, tips to improve gaming skills",
+   "old": 0.4211,
+   "new": 0.3636,
+   "old_repeat": 0.3636
+  },
+  {
+   "conv": 4,
+   "qi": 7,
+   "gold_answer": "California, London, the Smoky Mountains",
+   "old": 0.2,
+   "new": 0.4286,
+   "old_repeat": 0.2
+  },
+  {
+   "conv": 4,
+   "qi": 14,
+   "gold_answer": "comments on favorite books in a fantasy literature forum, articles on fantasy novels, studying characters, themes, and making book recommendations, writing a fantasy novel",
+   "old": 0.2,
+   "new": 0.2222,
+   "old_repeat": 0.2
+  },
+  {
+   "conv": 4,
+   "qi": 18,
+   "gold_answer": "J.K. Rowling, R.R. Martin, Patrick Rothfuss, Paulo Coelho, and J. R. R. Tolkien.",
+   "old": 0.7273,
+   "new": 0.7826,
+   "old_repeat": 0.7826
+  },
+  {
+   "conv": 4,
+   "qi": 21,
+   "gold_answer": "Seattle, Chicago, New York",
+   "old": 0.75,
+   "new": 0.8889,
+   "old_repeat": 0.75
+  },
+  {
+   "conv": 4,
+   "qi": 38,
+   "gold_answer": "UK",
+   "old": 0.0,
+   "new": 0.0,
+   "old_repeat": 0.0
+  },
+  {
+   "conv": 6,
+   "qi": 8,
+   "gold_answer": "Three dogs.",
+   "old": 1.0,
+   "new": 1.0,
+   "old_repeat": 1.0
+  },
+  {
+   "conv": 7,
+   "qi": 1,
+   "gold_answer": "mother, father, her friend Karlie",
+   "old": 0.2,
+   "new": 0.25,
+   "old_repeat": 0.1538
+  },
+  {
+   "conv": 8,
+   "qi": 77,
+   "gold_answer": "family get-together, honeymoon in Canada to see snowy landscapes, ski, taste local cuisine and do some snowshoeing",
+   "old": 0.2941,
+   "new": 0.3333,
+   "old_repeat": 0.3429
+  },
+  {
+   "conv": 9,
+   "qi": 60,
+   "gold_answer": "gold chain, custom-made guitar with an octopus on it",
+   "old": 0.4444,
+   "new": 0.2609,
+   "old_repeat": 0.4444
+  }
+ ],
+ "mean": {
+  "old": 0.4522,
+  "new": 0.4788,
+  "old_repeat": 0.4481
+ }
+}
