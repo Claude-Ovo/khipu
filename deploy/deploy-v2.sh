@@ -37,11 +37,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable aml2 >/dev/null 2>&1 || true
 sudo systemctl restart aml2
 
-echo "== Caddy：校验通过才替换并平滑重载"
-sudo caddy validate --config deploy/Caddyfile --adapter caddyfile >/dev/null
-sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-$(date +%Y%m%d-%H%M)
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+echo "== Caddy：内容没变就不碰（第一次 Full 在审核期，前面这层代理也别动）；变了才校验、替换、重载"
+if cmp -s deploy/Caddyfile /etc/caddy/Caddyfile; then
+  echo "Caddyfile unchanged, not touched"
+else
+  sudo caddy validate --config deploy/Caddyfile --adapter caddyfile >/dev/null
+  sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-$(date +%Y%m%d-%H%M)
+  sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+  sudo systemctl reload caddy
+fi
 
 for i in $(seq 1 20); do curl -sf -m 5 http://127.0.0.1:8082/health >/dev/null && break || sleep 1; done
 echo "8082: $(curl -s -m 5 http://127.0.0.1:8082/health | cut -c1-80)"
