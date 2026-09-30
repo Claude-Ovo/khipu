@@ -43,6 +43,17 @@ def entity_by_relevance(ch: dict[str, list[int]]) -> dict[str, list[int]]:
     return dict(ch, entity=ranked + rest)
 
 
+def entity_blend(ch: dict[str, list[int]], recency_mult: float) -> dict[str, list[int]]:
+    """折中：实体路按 min(相关度名次, 时间名次 × recency_mult) 排。recency_mult 越大越接近纯相关度；两路都没捞到的按时间名次 × mult。"""
+    br = {x: i + 1 for i, x in enumerate(ch["bm25"])}
+    vr = {x: i + 1 for i, x in enumerate(ch["vector"])}
+    ent = ch.get("entity", [])
+    def key(x, i):
+        rel = min(br.get(x, 1 << 30), vr.get(x, 1 << 30))
+        return min(rel, (i + 1) * recency_mult)
+    return dict(ch, entity=[x for _, x in sorted(((key(x, i), x) for i, x in enumerate(ent)), key=lambda t: t[0])])
+
+
 def scaled(w: dict[str, float], f: dict[str, float]) -> dict[str, float]:
     return {n: v * f.get(n, 1.0) for n, v in w.items()}
 
@@ -52,12 +63,24 @@ VARIANTS = {
     "V7 drop entity": lambda ch, it: rrf({n: v for n, v in ch.items() if n != "entity"}, _WEIGHTS[it]),
     "V11 entity+literal x0.5": lambda ch, it: rrf(ch, scaled(_WEIGHTS[it], {"entity": .5, "literal": .5})),
     "V14 entity by relevance (latest keeps recency)": lambda ch, it: rrf(ch if it == "latest" else entity_by_relevance(ch), _WEIGHTS[it]),
-    "V14b entity by relevance (all intents)": lambda ch, it: rrf(entity_by_relevance(ch), _WEIGHTS[it]),
+    "V15 V14 + entity x0.5": lambda ch, it: rrf(ch if it == "latest" else entity_by_relevance(ch), scaled(_WEIGHTS[it], {"entity": .5})),
+    "V17 V14 + entity+literal x0.5": lambda ch, it: rrf(ch if it == "latest" else entity_by_relevance(ch), scaled(_WEIGHTS[it], {"entity": .5, "literal": .5})),
+    "V18 V14 but temporal keeps recency too": lambda ch, it: rrf(ch if it in ("latest", "temporal") else entity_by_relevance(ch), _WEIGHTS[it]),
+    "V19 V17 but temporal keeps recency too": lambda ch, it: rrf(ch if it in ("latest", "temporal") else entity_by_relevance(ch), scaled(_WEIGHTS[it], {"entity": .5, "literal": .5})),
+    "V20 entity blend min(rel, 3*recency)": lambda ch, it: rrf(ch if it == "latest" else entity_blend(ch, 3.0), _WEIGHTS[it]),
+    "V21 entity blend min(rel, 5*recency)": lambda ch, it: rrf(ch if it == "latest" else entity_blend(ch, 5.0), _WEIGHTS[it]),
+    "V22 V21 + entity+literal x0.5": lambda ch, it: rrf(ch if it == "latest" else entity_blend(ch, 5.0), scaled(_WEIGHTS[it], {"entity": .5, "literal": .5})),
 }
 
 
-def judge(order: list[int], rec: dict, window: int) -> dict[str, bool]:
-    pos = {x: i + 1 for i, x in enumerate(order)}
+def seq_of_key(key) -> int:
+    return key if isinstance(key, int) else int(str(key).split(".")[0])
+
+
+def judge(order: list, rec: dict, window: int) -> dict[str, bool]:
+    pos: dict[int, int] = {}
+    for i, x in enumerate(order):          # 同一 seq 的几个 part 取最靠前的
+        pos.setdefault(seq_of_key(x), i + 1)
     out = {}
     gold = rec["gold"]
     out["turn_all@w"] = bool(gold) and all(pos.get(s, 1 << 30) <= window for s in gold)
@@ -74,6 +97,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
     ap.add_argument("--window", type=int, default=200)
+    ap.add_argument("--split", action="store_true", help="LoCoMo 按对话分两半（conv 0-4 / 5-9）分别报，挑改法看前一半、验后一半")
     args = ap.parse_args()
 
     recs = [json.loads(l) for f in args.files for l in open(f, encoding="utf-8") if l.strip()]
@@ -83,6 +107,10 @@ def main() -> None:
     if bad:
         print("  mismatch on:", [(r.get('dataset'), r.get('conv', r.get('qid')), r.get('qi')) for r in bad[:10]])
     print("intents:", dict(Counter(r["intent"] for r in recs)))
+    if args.split:
+        for r in recs:
+            if r["dataset"] == "locomo":
+                r["category"] = f"{r['category']}{'a' if r['conv'] < 5 else 'b'}"
     groups = sorted({(r["dataset"], str(r["category"])) for r in recs})
 
     results: dict[str, dict[tuple, dict[str, bool]]] = {}
@@ -94,7 +122,7 @@ def main() -> None:
     base = results["V0 current"]
     for metric in ("turn_all@w", "turn_all@100", "sess_all@w"):
         print(f"\n=== {metric.replace('@w', f'@{args.window}')} : count of questions (paired vs V0: lost/gained) ===")
-        header = f"{'variant':48s}" + "".join(f"{d}/{c:>22s}"[:24].rjust(24) for d, c in groups) + f"{'ALL':>12s}"
+        header = f"{'variant':48s}" + "".join(f"{d[:3]}/{c[:14]}".rjust(24) for d, c in groups) + f"{'ALL':>12s}"
         print(header)
         for name, per in results.items():
             cells = []

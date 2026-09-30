@@ -31,8 +31,13 @@ LOCOMO_TAG = "bm25-v03"
 LME_TAG = "lme-s-vec-v031"
 
 
-def seqs(ids: list[str]) -> list[int]:
-    return [seq_of(i) or -1 for i in ids]
+_KEY = re.compile(r"#(\d+)\.(\d+)$")
+
+
+def seqs(ids: list[str]) -> list[str]:
+    """段 id 末尾的 "seq.part"。LME 的长消息会被切成几个 part，只留 seq 会让两个 part 撞成一条、离线重算时对不上；
+    判黄金证据时取小数点前面的 seq 就行。"""
+    return [(m.group(1) + "." + m.group(2)) if (m := _KEY.search(i)) else "-1.0" for i in ids]
 
 
 def locomo_questions(path: str) -> list[dict]:
@@ -141,7 +146,9 @@ async def main() -> None:
             f.flush()
             u = usage.snapshot()
             cost = u["embed"]["tokens"] * EMBED_YUAN_PER_TOKEN
-            pos = {s: i + 1 for i, s in enumerate(rec["fused"])}
+            pos = {}
+            for i, key in enumerate(rec["fused"]):
+                pos.setdefault(int(key.split(".")[0]), i + 1)
             g = [pos.get(s) for s in q["gold"]]
             if n % 25 == 0 or n == args.offset + 1:
                 print(f"[{n}] {q.get('category')} gold_fused_ranks={g} sizes={ {k: len(v) for k, v in rec['channels'].items()} } "

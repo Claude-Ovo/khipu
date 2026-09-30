@@ -28,13 +28,17 @@ _INTENT = [
 ]
 
 # 各路在 RRF 里的分量；只有这五路能开门
+# 2026-10-01 实体、字面两路的分量减半（tests/analyze_channels.py 在 LoCoMo 1982 题 + LME 200 题的离线重算上比出来的：
+# 这两路每题几百条、和 bm25/向量大量重叠，原分量等于把同一条证据的分数记两遍，把别的证据挤出重排窗口）
 _WEIGHTS = {
-    "default":   {"bm25": 1.0, "vector": 1.0, "entity": 0.8, "literal": 1.0, "date": 0.5},
-    "temporal":  {"bm25": 1.2, "vector": 0.9, "entity": 0.7, "literal": 1.0, "date": 1.5},
-    "latest":    {"bm25": 1.0, "vector": 1.0, "entity": 1.0, "literal": 0.8, "date": 0.3},
-    "aggregate": {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.0, "date": 0.5},
-    "who":       {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.2, "date": 0.3},
+    "default":   {"bm25": 1.0, "vector": 1.0, "entity": 0.4, "literal": 0.5, "date": 0.5},
+    "temporal":  {"bm25": 1.2, "vector": 0.9, "entity": 0.35, "literal": 0.5, "date": 1.5},
+    "latest":    {"bm25": 1.0, "vector": 1.0, "entity": 0.5, "literal": 0.4, "date": 0.3},
+    "aggregate": {"bm25": 1.0, "vector": 1.0, "entity": 0.7, "literal": 0.5, "date": 0.5},
+    "who":       {"bm25": 1.0, "vector": 1.0, "entity": 0.7, "literal": 0.6, "date": 0.3},
 }
+# 实体路默认按时间倒序（最近提到这个人的段在前）。除了问「最近」和问时间的题，都改成按相关度排：见 _entity_by_relevance
+_ENTITY_KEEPS_RECENCY = ("latest", "temporal")
 _VIRTUAL_RANK = 4  # 实体/字面/日期通道的起始虚拟排名（MemoryConstellations 的做法）
 for _w in _WEIGHTS.values():   # 第二跳两路的分量，只有 HOP_ENABLED 时才会出现在通道表里
     _w.setdefault("bm25_hop", config.HOP_W)
@@ -117,6 +121,19 @@ def _entity_channel(idx: UserIndex, q: str) -> list[int]:
     # 同一个人的段按时间倒序，没时间的排最后；并列按行号稳定排序
     return sorted(rows, key=lambda p: (idx.rows[p].ts_value is None,
                                        -(idx.rows[p].ts_value.timestamp() if idx.rows[p].ts_value else 0), p))
+
+
+def _entity_by_relevance(channels: dict[str, list[int]]) -> list[int]:
+    """实体路按它在 bm25 / 向量里的最好名次重排；两路都没捞到的接在后面、保持原来的时间倒序。
+    2026-10-01 诊断（collab/诊断-事实与多跳-20260930/fusion-sim/）：LoCoMo 每题都点名说话人，实体路一题几百条、按时间倒序、
+    从虚拟名次 4 起进 RRF，最近几十条提到这个人的段不管相不相关都拿到接近 bm25/向量头名的分数，老的真证据被挤出重排窗口。
+    只改顺序不改成员：LoCoMo 多跳全证据进窗口 203/282 → 219，其余类别和 LME 不掉。"""
+    bm25_rank = {p: i for i, p in enumerate(channels["bm25"])}
+    vec_rank = {p: i for i, p in enumerate(channels["vector"])}
+    ent = channels["entity"]
+    ranked = sorted((p for p in ent if p in bm25_rank or p in vec_rank),
+                    key=lambda p: min(bm25_rank.get(p, 1 << 30), vec_rank.get(p, 1 << 30)))
+    return ranked + [p for p in ent if p not in bm25_rank and p not in vec_rank]
 
 
 def _literal_channel(idx: UserIndex, q: str, bm25_scores: dict[int, float]) -> list[int]:
@@ -398,7 +415,7 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     channels = {
         "bm25": bm25_hits,
         "vector": vec_hits,
-        "entity": entity_hits,
+        "entity": entity_hits if intent in _ENTITY_KEEPS_RECENCY else _entity_by_relevance({"bm25": bm25_hits, "vector": vec_hits, "entity": entity_hits}),
         "literal": literal_hits,
         "date": date_hits,
     }
