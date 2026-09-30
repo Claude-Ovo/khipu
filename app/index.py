@@ -77,6 +77,7 @@ class UserIndex:
     alias_words: dict[str, str] = field(default_factory=dict)
     alias_patterns: tuple[tuple[re.Pattern[str], str], ...] = ()
     lower_texts: list[str] = field(default_factory=list)
+    token_cache: dict[int, int] = field(default_factory=dict)   # 行号 -> 渲染后的 token 数（search._rendered_tokens 按需填）
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()

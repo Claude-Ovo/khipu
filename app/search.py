@@ -317,6 +317,17 @@ def _render(idx: UserIndex, r: Row) -> str:
     return f"{head} {who}:{part} {text}"
 
 
+def _rendered_tokens(idx: UserIndex, p: int) -> int:
+    """渲染后的 token 数，按行缓存在索引上（索引建好后 rows / session_label 不再变，渲染结果固定）。
+    09-30 压测：长片段的用户预算 60k 先于 100 条用完，_box 会把剩下的几千个候选逐个渲染、逐个 tiktoken 一遍，
+    单次检索 4 秒多的 CPU，全在事件循环上；缓存之后一个用户只算一遍。"""
+    t = idx.token_cache.get(p)
+    if t is None:
+        t = count_tokens(_render(idx, idx.rows[p]))
+        idx.token_cache[p] = t
+    return t
+
+
 def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int) -> list[dict]:
     out: list[dict] = []
     used = 0
@@ -324,10 +335,10 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int)
         if len(out) >= top_k:
             break
         r = idx.rows[p]
-        content = _render(idx, r)
-        t = count_tokens(content)
+        t = _rendered_tokens(idx, p)
         if used + t > config.BUDGET_TOKENS:
             continue  # 整条跳过，绝不截断
+        content = _render(idx, r)
         item = {"id": r.id, "content": content, "text": content, "score": round(scores.get(p, 0.0), 6)}  # text 与 content 同值：CL-Bench 管线读的是 text，空 text 静默跳过
         ca = created_at_value(r.ts_value, r.ts_granularity)
         if ca:
@@ -386,9 +397,13 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             for hits in hop.values():
                 must.extend(p for p in hits[: config.HOP_RESERVE] if p not in first_round)
     order = await _reranked(idx, q, order, scores, must)
-    if is_task_request(query):
-        order = _insert_rules(idx, order)
-    order = _with_neighbors(idx, order, k)
-    for p in order:
-        scores.setdefault(p, 0.0)
-    return _box(idx, order, scores, k)
+
+    def finish() -> list[dict]:
+        # 规矩口袋、邻居、装箱都是同步 CPU 活；装箱第一次要给几千个候选算 token，放线程里别堵事件循环
+        o = _insert_rules(idx, order) if is_task_request(query) else order
+        o = _with_neighbors(idx, o, k)
+        for p in o:
+            scores.setdefault(p, 0.0)
+        return _box(idx, o, scores, k)
+
+    return await asyncio.to_thread(finish)
