@@ -107,35 +107,97 @@ def _index_text(row: Row) -> str:
     return " ".join([who, *date_strings(row.ts_value), row.text])
 
 
+def _containers_index(lowers: list[str]) -> dict[str, list[str]]:
+    """三字子串 -> 含它的名字（按 lowers 顺序）。「s 是 l 的子串」必要条件是 s 的任一三字子串也在 l 里，
+    所以查 s 最稀有的那个三字子串的倒排就够了，再逐个核对 s in l。顺序保持 lowers 顺序，后面数 distinct 时要用。"""
+    tri: dict[str, list[str]] = {}
+    for l in lowers:
+        for g in {l[i:i + 3] for i in range(len(l) - 2)}:
+            tri.setdefault(g, []).append(l)
+    return tri
+
+
+def _bigrams(s: str) -> set[str]:
+    return {s[i:i + 2] for i in range(len(s) - 1)}
+
+
 def group_names(names_per_row: list[list[str]]) -> tuple[dict[str, set[int]], dict[str, str]]:
     """两遍归一：先汇总候选名，找出「被两个以上互不相同的长名包含」的歧义短名，独立保留、不做合并依据；
-    再对其余名字按互相包含 / bigram ≥ 0.5 分组（审查 #3 P1-07）。"""
+    再对其余名字按互相包含 / bigram ≥ 0.5 分组（审查 #3 P1-07）。
+
+    09-30：两步原来都是 O(N²)（维基类用户 16,278 个名字要 16.7 秒，每次 Add 后重建索引都要再来一遍）。
+    现在第一步用三字子串倒排找包含关系，第二步用 numpy 一次算出某个名字与所有已有规范名的 bigram 重叠数；
+    判定条件和扫描顺序（取第一个匹配的规范名）与原实现完全一致，输出逐字相同（tests/test_group_names.py 对拍）。
+    只有长度不到 2 的名字（没有 bigram，same_person 走子串路径）退回逐个比较。"""
+    import numpy as np
+
     all_names: dict[str, str] = {}  # 小写 -> 首次出现的写法
     for names in names_per_row:
         for n in names:
             all_names.setdefault(n.lower(), n)
     lowers = list(all_names)
+
+    # ---- 第一步：歧义短名 ----
+    tri = _containers_index(lowers)
     ambiguous: set[str] = set()
     for s in lowers:
-        containers = [l for l in lowers if l != s and s in l]
+        if len(s) >= 3:
+            rarest = min((s[i:i + 3] for i in range(len(s) - 2)), key=lambda g: len(tri.get(g, ())))
+            containers = [l for l in tri.get(rarest, ()) if l != s and s in l]
+        else:
+            containers = [l for l in lowers if l != s and s in l]
         distinct = [c for i, c in enumerate(containers) if not any(same_person(c, o) for o in containers[:i])]
         if len(distinct) >= 2:
             ambiguous.add(s)
+
+    # ---- 第二步：归到第一个「同一个人」的规范名 ----
+    col: dict[str, int] = {}
+    for l in lowers:
+        for b in _bigrams(l):
+            col.setdefault(b, len(col))
+    cap = 256
+    mat = np.zeros((cap, max(len(col), 1)), dtype=np.uint8)   # 规范名 × bigram
+    size = np.zeros(cap, dtype=np.int32)                      # 每个规范名的 bigram 数
     canon_of: dict[str, str] = {}
     canons: list[str] = []
+    short_canons: list[int] = []                              # 长度 < 2 的规范名，没有 bigram，只能逐个比
     for l in lowers:
         if l in ambiguous:
             canon_of[l] = all_names[l]
             continue
+        name = all_names[l]
+        bg = _bigrams(l)
+        cols = [col[b] for b in bg]
         found = None
-        for c in canons:
-            if c.lower() not in ambiguous and same_person(c, all_names[l]):
-                found = c
-                break
+        n = len(canons)
+        if n:
+            hit = np.zeros(n, dtype=bool)
+            if cols:
+                shared = mat[:n, cols].sum(axis=1, dtype=np.int32)
+                sz = size[:n]
+                # same_person：互相包含，或 |交| / min(|a|,|b|) ≥ 0.5。两边都有 bigram 时，包含关系蕴含后者
+                hit = (sz > 0) & (shared * 2 >= np.minimum(sz, len(bg)))
+            for i in short_canons:
+                hit[i] = same_person(canons[i], name)
+            if not cols:  # 自己没有 bigram：只可能走子串路径，逐个比
+                for i in range(n):
+                    hit[i] = same_person(canons[i], name)
+            idx = int(np.argmax(hit)) if hit.any() else -1
+            if idx >= 0:
+                found = canons[idx]
         if found is None:
-            found = all_names[l]
+            found = name
+            if n >= cap:
+                cap *= 2
+                mat = np.concatenate([mat, np.zeros((cap - n, mat.shape[1]), dtype=np.uint8)])
+                size = np.concatenate([size, np.zeros(cap - n, dtype=np.int32)])
+            mat[n, cols] = 1
+            size[n] = len(bg)
+            if not cols:
+                short_canons.append(n)
             canons.append(found)
         canon_of[l] = found
+
     groups: dict[str, set[int]] = {}
     for pos, names in enumerate(names_per_row):
         for n in names:
