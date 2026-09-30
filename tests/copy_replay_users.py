@@ -22,15 +22,18 @@ def main() -> None:
     with psycopg.connect(args.src, options="-c default_transaction_read_only=on") as src, psycopg.connect(args.dst) as dst:
         register_vector(src)
         register_vector(dst)
-        rows = src.execute(f"SELECT {COLS} FROM segments WHERE user_id LIKE %s ORDER BY user_id, session_id, seq, part",
-                           (args.like,)).fetchall()
-        users = sorted({r[0] for r in rows})
+        # 一个用户一批：LME 的 200 个用户共 12.7 万段带向量，一次全读进内存会把 4G 的机器吃光
+        users = [r[0] for r in src.execute("SELECT DISTINCT user_id FROM segments WHERE user_id LIKE %s ORDER BY 1", (args.like,))]
+        total = 0
         with dst.transaction():
             dst.execute("DELETE FROM segments WHERE user_id LIKE %s", (args.like,))
             with dst.cursor() as cur:
-                cur.executemany(f"INSERT INTO segments ({COLS}) VALUES ({', '.join(['%s'] * 17)})", rows)
+                for u in users:
+                    rows = src.execute(f"SELECT {COLS} FROM segments WHERE user_id = %s ORDER BY session_id, seq, part", (u,)).fetchall()
+                    cur.executemany(f"INSERT INTO segments ({COLS}) VALUES ({', '.join(['%s'] * 17)})", rows)
+                    total += len(rows)
         n = dst.execute("SELECT count(*), count(embedding) FROM segments WHERE user_id LIKE %s", (args.like,)).fetchone()
-    print(f"copied {len(rows)} rows for {len(users)} users; dst now has {n[0]} rows, {n[1]} with vectors")
+    print(f"copied {total} rows for {len(users)} users; dst now has {n[0]} rows, {n[1]} with vectors")
 
 
 if __name__ == "__main__":
