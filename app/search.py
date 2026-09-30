@@ -272,7 +272,7 @@ def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
 # ---------- 装箱 ----------
 
 async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, float],
-                    must: list[int] | None = None) -> list[int]:
+                    must: list[int] | None = None, trace: dict | None = None) -> list[int]:
     """对融合后的前 RERANK_TOPN 条过一遍交叉编码器，按重排分（可与 RRF 名次混合）重排；后面的原样接上。
     重排不可用时原样返回——它只改顺序，不改准入，谁能进门仍由五路通道决定。
     must：必须进重排窗口的候选（审查 #4：第二跳捞到的新证据会被双命中前置挤到窗口外，永远没机会被重排）。"""
@@ -285,6 +285,8 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
             hs = set(head)
             order = head + [p for p in order if p not in hs]
     if len(head) < 2:
+        if trace is not None:
+            trace["rerank"] = {"status": "too_few", "head": [idx.rows[p].id for p in head]}
         return order
     timed_out = False
     try:
@@ -297,13 +299,22 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
         log.warning("rerank skipped: %s %s", type(e).__name__, e)
         rs = None
     if rs is None:  # 三种情况都算「这次没重排」：整步超时、意外异常、rerank() 自己重试完放弃
-        usage.rerank_gave_up(timeout=timed_out)
+        if trace is not None:
+            trace["rerank"] = {"status": "disabled" if not config.RERANK_ENABLED else ("timeout" if timed_out else "failed"),
+                               "head": [idx.rows[p].id for p in head]}
+        if config.RERANK_ENABLED:
+            usage.rerank_gave_up(timeout=timed_out)
         return order
     n = len(head)
     mixed = {p: config.RERANK_MIX * rs[i] + (1 - config.RERANK_MIX) * (1 - i / n) for i, p in enumerate(head)}
+    if trace is not None:
+        trace["rerank"] = {"status": "ok", "head": [idx.rows[p].id for p in head],   # 重排前的顺序
+                           "scores": [round(float(s), 6) for s in rs]}               # 与 head 一一对应
     head = sorted(head, key=lambda p: -mixed[p])
     for p in head:
         scores[p] = round(mixed[p], 6)
+    if trace is not None:
+        trace["rerank"]["after"] = [idx.rows[p].id for p in head]
     return head + order[len(head):]
 
 
@@ -328,15 +339,17 @@ def _rendered_tokens(idx: UserIndex, p: int) -> int:
     return t
 
 
-def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int) -> list[dict]:
+def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None) -> list[dict]:
     out: list[dict] = []
     used = 0
+    skipped = 0
     for p in order:
         if len(out) >= top_k:
             break
         r = idx.rows[p]
         t = _rendered_tokens(idx, p)
         if used + t > config.BUDGET_TOKENS:
+            skipped += 1
             continue  # 整条跳过，绝不截断
         content = _render(idx, r)
         item = {"id": r.id, "content": content, "text": content, "score": round(scores.get(p, 0.0), 6)}  # text 与 content 同值：CL-Bench 管线读的是 text，空 text 静默跳过
@@ -345,12 +358,19 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int)
             item["created_at"] = ca
         out.append(item)
         used += t
+    if trace is not None:
+        trace["boxed"] = [{"id": it["id"], "tokens": _rendered_tokens(idx, idx.id_to_pos[it["id"]])} for it in out]
+        trace["boxed_tokens"] = used
+        trace["budget_skipped"] = skipped
     return out
 
 
 # ---------- 入口 ----------
 
-async def search(user_id: str, query: str, options: list[str] | None, top_k: int) -> list[dict]:
+async def search(user_id: str, query: str, options: list[str] | None, top_k: int,
+                 trace: dict | None = None) -> list[dict]:
+    """trace：诊断用，传一个空 dict 进来会被填上各路命中、融合顺序、重排前后与分数、最终装箱的条目和 token 数。
+    线上调用不传，行为不变。"""
     # 建索引是 CPU 活（BM25 + 抽名），放线程池，别堵住事件循环里别的请求
     idx = await asyncio.to_thread(get_index, user_id)
     if not idx.rows:
@@ -384,6 +404,10 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     }
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)
+    if trace is not None:
+        trace["intent"] = intent
+        trace["channels"] = {name: [idx.rows[p].id for p in hits] for name, hits in channels.items()}
+        trace["fused"] = [idx.rows[p].id for p in order]          # 融合 + 双命中前置之后、重排之前的完整顺序
     # 「how many … last month」会被意图路由判成 temporal，但它仍是计数题，第二跳看题型不看路由结果
     must: list[int] = []
     if config.HOP_ENABLED and (intent in config.HOP_INTENTS or _AGG_RX.search(query)):
@@ -396,7 +420,7 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             # 第二跳独有的新候选，各路前 HOP_RESERVE 条保证进重排窗口
             for hits in hop.values():
                 must.extend(p for p in hits[: config.HOP_RESERVE] if p not in first_round)
-    order = await _reranked(idx, q, order, scores, must)
+    order = await _reranked(idx, q, order, scores, must, trace)
 
     def finish() -> list[dict]:
         # 规矩口袋、邻居、装箱都是同步 CPU 活；装箱第一次要给几千个候选算 token，放线程里别堵事件循环
@@ -404,6 +428,8 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
         o = _with_neighbors(idx, o, k)
         for p in o:
             scores.setdefault(p, 0.0)
-        return _box(idx, o, scores, k)
+        if trace is not None:
+            trace["pre_box"] = [idx.rows[p].id for p in o[: 3 * k]]   # 规矩口袋和邻居插入之后、装箱之前
+        return _box(idx, o, scores, k, trace)
 
     return await asyncio.to_thread(finish)
