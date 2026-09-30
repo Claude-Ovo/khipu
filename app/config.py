@@ -67,3 +67,6 @@ HARD_TOP_K = 100
 
 # 缓存
 INDEX_CACHE_USERS = _int("INDEX_CACHE_USERS", 64)
+
+# 事件循环延迟看门狗
+LOOP_LAG_WARN_S = _float("LOOP_LAG_WARN_S", 0.5)

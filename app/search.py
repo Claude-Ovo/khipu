@@ -106,23 +106,24 @@ async def _vector_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], li
 
 def _entity_channel(idx: UserIndex, q: str) -> list[int]:
     ql = q.lower()
-    hit_groups: set[str] = set()
-    for alias, canon in idx.alias_to_group.items():
-        if len(alias) > 2 and re.search(rf"\b{re.escape(alias)}\b", ql):
+    hit_groups = {idx.alias_words[word] for word in idx.alias_word_rx.findall(ql)
+                  if word in idx.alias_words}
+    for rx, canon in idx.alias_patterns:
+        if rx.search(ql):
             hit_groups.add(canon)
     rows: set[int] = set()
     for g in hit_groups:
         rows |= idx.entity_groups.get(g, set())
-    # 同一个人的段按时间倒序，没时间的排最后
+    # 同一个人的段按时间倒序，没时间的排最后；并列按行号稳定排序
     return sorted(rows, key=lambda p: (idx.rows[p].ts_value is None,
-                                       -(idx.rows[p].ts_value.timestamp() if idx.rows[p].ts_value else 0)))
+                                       -(idx.rows[p].ts_value.timestamp() if idx.rows[p].ts_value else 0), p))
 
 
 def _literal_channel(idx: UserIndex, q: str, bm25_scores: dict[int, float]) -> list[int]:
     terms = [t.lower() for t in literal_terms(q)]
     if not terms:
         return []
-    hits = [r.pos for r in idx.rows if any(t in r.text.lower() for t in terms)]
+    hits = [r.pos for r, text in zip(idx.rows, idx.lower_texts) if any(t in text for t in terms)]
     return sorted(hits, key=lambda p: -bm25_scores.get(p, 0.0))
 
 
@@ -348,19 +349,27 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     intent = detect_intent(query)
     n = k * config.CHANNEL_TOPN_MULT
 
-    bm25_hits, bm25_scores = _bm25_channel(idx, q, n)
-    try:
-        vec_hits, qvec = await asyncio.wait_for(_vector_channel(idx, q, n), timeout=config.SEARCH_TIMEOUT_S)
-    except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
-        log.warning("vector channel skipped: %s", e)
-        vec_hits, qvec = [], None
+    def cpu_channels() -> tuple[list[int], list[int], list[int], list[int]]:
+        bm25_hits, bm25_scores = _bm25_channel(idx, q, n)
+        return (bm25_hits, _entity_channel(idx, q),
+                _literal_channel(idx, q, bm25_scores), _date_channel(idx, q, intent))
+
+    async def vector_channel() -> tuple[list[int], list[float] | None]:
+        try:
+            return await asyncio.wait_for(_vector_channel(idx, q, n), timeout=config.SEARCH_TIMEOUT_S)
+        except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
+            log.warning("vector channel skipped: %s", e)
+            return [], None
+
+    (bm25_hits, entity_hits, literal_hits, date_hits), (vec_hits, qvec) = await asyncio.gather(
+        asyncio.to_thread(cpu_channels), vector_channel())
 
     channels = {
         "bm25": bm25_hits,
         "vector": vec_hits,
-        "entity": _entity_channel(idx, q),
-        "literal": _literal_channel(idx, q, bm25_scores),
-        "date": _date_channel(idx, q, intent),
+        "entity": entity_hits,
+        "literal": literal_hits,
+        "date": date_hits,
     }
     order, scores, hit_by = _rrf(channels, intent)
     order = _both_first(order, hit_by)

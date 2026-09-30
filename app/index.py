@@ -3,16 +3,41 @@
 部署只跑一个 worker，进程内失效才可靠（P1-04）。"""
 from __future__ import annotations
 
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import ClassVar
 
 from rank_bm25 import BM25Okapi
 
 from . import config
 from .db import pool
 from .textutil import date_strings, extract_names, same_person, tokenize
+
+
+_ALIAS_WORD_RX = re.compile(r"\w+")
+
+
+def build_alias_matcher(alias_to_group: dict[str, str]) -> tuple[
+    dict[str, str], tuple[tuple[re.Pattern[str], str], ...]
+]:
+    """输入沿用 alias_to_group 的小写键；保留 str 正则的 Unicode 边界语义。
+
+    纯词别名直接查查询的极大词段。少量含非词字符的别名分别预编译，
+    避免单个交替正则漏掉同起点或相交的别名（它们可能属于不同规范名）。
+    """
+    words: dict[str, str] = {}
+    patterns: list[tuple[re.Pattern[str], str]] = []
+    for alias, canon in alias_to_group.items():
+        if len(alias) <= 2:
+            continue
+        if _ALIAS_WORD_RX.fullmatch(alias):
+            words[alias] = canon
+        else:
+            patterns.append((re.compile(rf"\b{re.escape(alias)}\b"), canon))
+    return words, tuple(patterns)
 
 
 @dataclass
@@ -35,6 +60,8 @@ class Row:
 
 @dataclass
 class UserIndex:
+    alias_word_rx: ClassVar[re.Pattern[str]] = _ALIAS_WORD_RX
+
     user_id: str
     rows: list[Row]
     bm25: BM25Okapi | None
@@ -47,6 +74,9 @@ class UserIndex:
     id_to_pos: dict[str, int]
     version: int
     token_sets: list[set[str]] = field(default_factory=list)  # 每行的词集合：小语料里 BM25 会打负分，命中与否按词集合判
+    alias_words: dict[str, str] = field(default_factory=dict)
+    alias_patterns: tuple[tuple[re.Pattern[str], str], ...] = ()
+    lower_texts: list[str] = field(default_factory=list)
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()
@@ -122,6 +152,8 @@ def _build(user_id: str, version: int) -> UserIndex:
         if r.speaker_name:
             r.names.append(r.speaker_name)
     groups, alias = group_names([r.names for r in rows])
+    alias_words, alias_patterns = build_alias_matcher(alias)
+    lower_texts = [r.text.lower() for r in rows]
     by_date: dict[str, set[int]] = {}
     by_month: dict[str, set[int]] = {}
     rule_rows: list[int] = []
@@ -135,7 +167,8 @@ def _build(user_id: str, version: int) -> UserIndex:
         if r.session_id not in session_label:
             session_label[r.session_id] = f"session {len(session_label) + 1}"
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
-                     {r.id: r.pos for r in rows}, version, token_sets)
+                     {r.id: r.pos for r in rows}, version, token_sets,
+                     alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts)
 
 
 def get_index(user_id: str) -> UserIndex:
