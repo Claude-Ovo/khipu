@@ -23,15 +23,21 @@ EMBED_BASE_URL = os.environ.get("EMBED_BASE_URL", "https://dashscope-intl.aliyun
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "text-embedding-v4")
 EMBED_DIM = _int("EMBED_DIM", 1024)
 EMBED_BATCH = _int("EMBED_BATCH", 10)          # 百炼同步接口单次上限
-EMBED_TIMEOUT_S = _float("EMBED_TIMEOUT_S", 20)
+EMBED_TIMEOUT_S = _float("EMBED_TIMEOUT_S", 20)          # 单次尝试的读超时。第一次 Full 调到 10 秒，首次失败 1,686 次，别再调低
+EMBED_CONNECT_TIMEOUT_S = _float("EMBED_CONNECT_TIMEOUT_S", 5)
+EMBED_CONCURRENCY = _int("EMBED_CONCURRENCY", 16)         # 全进程同时在飞的向量请求上限（16 路 Add × 每个 Add 4 批，以前能冲到 64）
 EMBED_MAX_CHARS = _int("EMBED_MAX_CHARS", 6000)
+HTTP_MAX_CONNECTIONS = _int("HTTP_MAX_CONNECTIONS", 32)   # 百炼共用客户端的连接池大小
+HTTP_KEEPALIVE_S = _float("HTTP_KEEPALIVE_S", 30)
 
 # 重排：gte-rerank-v2（规则允许任意 reranker）。默认关，靶场对比过再开
 RERANK_ENABLED = os.environ.get("RERANK_ENABLED", "") == "1"
 RERANK_MODEL = os.environ.get("RERANK_MODEL", "gte-rerank-v2")
 RERANK_URL = os.environ.get("RERANK_URL", "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank")
 RERANK_TOPN = _int("RERANK_TOPN", 200)         # 只重排融合后的前 N 条
-RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", 15)
+RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", 45)          # 整个重排步骤的上限（含重试），超了按融合顺序返回；线上 .env 也是 45
+RERANK_ATTEMPT_TIMEOUT_S = _float("RERANK_ATTEMPT_TIMEOUT_S", 20)  # 单次尝试的读超时，比外层短才有机会重试一次
+RERANK_CONCURRENCY = _int("RERANK_CONCURRENCY", 16)        # 全进程同时在飞的重排请求上限
 RERANK_DOC_CHARS = _int("RERANK_DOC_CHARS", 0)  # >0 时只把每条候选的前 N 个字符送去重排（省钱），返回给平台的正文不受影响
 RERANK_MIX = _float("RERANK_MIX", 1.0)         # 1.0 = 完全按重排分排；0.5 = 重排分与 RRF 名次各半
 

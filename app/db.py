@@ -7,7 +7,10 @@ from pgvector.psycopg import register_vector
 
 from . import config
 
-pool = ConnectionPool(config.DATABASE_URL, min_size=1, max_size=8, open=False, configure=register_vector)
+# 会话时区固定 UTC（桌面日志 #3）：平台把数据集里的钟面时间当 UTC 存成毫秒；服务器本地是 +08，以前 ts_value 读回来带 +08，
+# 内容头、按日期索引、BM25 里的日期串都比 created_at 快 8 小时，UTC 16:00 以后的会话在正文里显示成第二天。
+pool = ConnectionPool(config.DATABASE_URL, min_size=1, max_size=8, open=False, configure=register_vector,
+                      kwargs={"options": "-c TimeZone=UTC"})
 
 SCHEMA = f"""
 CREATE EXTENSION IF NOT EXISTS vector;

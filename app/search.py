@@ -13,6 +13,7 @@ import numpy as np
 from . import config
 from .db import pool
 from .embed import embed_query
+from .httpclient import usage
 from .rerank import rerank
 from .index import Row, UserIndex, get_index
 from .textutil import count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
@@ -284,12 +285,18 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
             order = head + [p for p in order if p not in hs]
     if len(head) < 2:
         return order
+    timed_out = False
     try:
         rs = await asyncio.wait_for(rerank(q, [_render(idx, idx.rows[p]) for p in head]), timeout=config.RERANK_TIMEOUT_S)
-    except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001
-        log.warning("rerank skipped: %s", e)
+    except asyncio.TimeoutError:
+        # 第一次 Full 的日志里这一行原因是空的（TimeoutError 的 str 为空），分不清是百炼慢还是自己卡住
+        log.warning("rerank skipped: step timeout after %.0fs, window=%d", config.RERANK_TIMEOUT_S, len(head))
+        rs, timed_out = None, True
+    except Exception as e:  # noqa: BLE001
+        log.warning("rerank skipped: %s %s", type(e).__name__, e)
         rs = None
-    if rs is None:
+    if rs is None:  # 三种情况都算「这次没重排」：整步超时、意外异常、rerank() 自己重试完放弃
+        usage.rerank_gave_up(timeout=timed_out)
         return order
     n = len(head)
     mixed = {p: config.RERANK_MIX * rs[i] + (1 - config.RERANK_MIX) * (1 - i / n) for i, p in enumerate(head)}

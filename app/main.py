@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -23,11 +24,13 @@ from . import config
 from .chunking import build_segments
 from .db import init_schema, pool
 from .embed import embed_texts
+from .httpclient import aclose as close_http, usage
 from .index import invalidate
 from .search import search as run_search
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)   # 每次请求一行「HTTP Request: POST …」没有信息量；embed/rerank 自己记带 token 和耗时的那行
 log = logging.getLogger("aml")
 
 MAX_TS_MS = 253_402_214_400_000  # 9999-12-31T00:00Z，留 8 小时余量，+08 读回不会越过 10000 年（原来是 2100-01-01，9-29 Full 就是被它卡住的）
@@ -414,6 +417,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         task.cancel()
+        await close_http()
         pool.close()
 
 
@@ -444,7 +448,7 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 @app.get("/health")
 async def health() -> dict[str, Any]:
     await asyncio.to_thread(_health_check)
-    return {"ok": True, "service": "khipu"}
+    return {"ok": True, "service": "khipu", "usage": usage.snapshot()}
 
 
 @app.post("/add", dependencies=[Depends(require_auth)])
@@ -481,5 +485,7 @@ async def add(req: AddRequest) -> dict[str, Any]:
 async def search(req: SearchRequest) -> dict[str, Any]:
     if req.query == "" and not req.options:
         return {"data": []}
+    t0 = time.monotonic()
     data = await run_search(req.user_id, req.query, req.options, req.top_k or config.HARD_TOP_K)
+    log.info("search user=%s k=%s returned=%d %dms", req.user_id[:60], req.top_k, len(data), int((time.monotonic() - t0) * 1000))
     return {"data": data}
