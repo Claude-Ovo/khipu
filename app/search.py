@@ -309,7 +309,7 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
     mixed = {p: config.RERANK_MIX * rs[i] + (1 - config.RERANK_MIX) * (1 - i / n) for i, p in enumerate(head)}
     if trace is not None:
         trace["rerank"] = {"status": "ok", "head": [idx.rows[p].id for p in head],   # 重排前的顺序
-                           "scores": [round(float(s), 6) for s in rs]}               # 与 head 一一对应
+                           "scores": [float(s) for s in rs]}                         # 与 head 一一对应，原始浮点（取整会造出假并列）
     head = sorted(head, key=lambda p: -mixed[p])
     for p in head:
         scores[p] = round(mixed[p], 6)
@@ -420,6 +420,8 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             # 第二跳独有的新候选，各路前 HOP_RESERVE 条保证进重排窗口
             for hits in hop.values():
                 must.extend(p for p in hits[: config.HOP_RESERVE] if p not in first_round)
+    if trace is not None:
+        trace["pre_rerank"] = [idx.rows[p].id for p in order]    # 实际交给重排的顺序（开第二跳时与 fused 不同）
     order = await _reranked(idx, q, order, scores, must, trace)
 
     def finish() -> list[dict]:

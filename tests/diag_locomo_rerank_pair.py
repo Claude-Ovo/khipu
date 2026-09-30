@@ -31,7 +31,7 @@ from app.textutil import count_tokens  # noqa: E402
 TAG = "bm25-v03"
 RERANK_YUAN_PER_TOKEN = 0.8 / 1_000_000
 EMBED_YUAN_PER_TOKEN = 0.5 / 1_000_000
-_DIA = re.compile(r"^D(\d+):(\d+)$")
+_DIA = re.compile(r"^D:?(\d+):(\d+)$")   # 标注里有 "D:11:26" 这种写法
 
 
 def norm_dia(s: str) -> str | None:
@@ -76,7 +76,9 @@ def arm_record(trace: dict, items: list[dict], seq_to_dia: dict[int, str], gold:
         "rerank_status": rr.get("status"),
         "fused_len": len(trace.get("fused", [])),
         "rank_fused": ranks(trace.get("fused", []), seq_to_dia, gold),            # 重排前（融合 + 双命中前置）
-        "rank_after_rerank": ranks(rr.get("after", []), seq_to_dia, gold) if rr.get("after") else None,
+        # 重排后的完整顺序 = 窗口内按分数排 + 窗口外原样接上；另记每条证据是否在窗口内
+        "rank_after_rerank": ranks(rr["after"] + trace.get("pre_rerank", trace.get("fused", []))[len(rr["head"]):], seq_to_dia, gold) if rr.get("after") else None,
+        "in_rerank_window": {g: (r is not None and r <= len(rr.get("head", []))) for g, r in ranks(trace.get("pre_rerank", trace.get("fused", [])), seq_to_dia, gold).items()},
         "rank_final": ranks(final_ids, seq_to_dia, gold),                          # 最终返回、送进答题上下文的顺序
         "final_n": len(items),
         "final_tokens_cl100k": trace.get("boxed_tokens"),
@@ -86,7 +88,7 @@ def arm_record(trace: dict, items: list[dict], seq_to_dia: dict[int, str], gold:
     }
     for k in (10, 100):
         hit = [g for g, r in rec["rank_final"].items() if r is not None and r <= k]
-        rec[f"all@{k}"] = int(len(hit) == len(gold))
+        rec[f"all@{k}"] = int(bool(gold) and len(hit) == len(gold))
         rec[f"hops@{k}"] = len(hit)
     return rec
 
@@ -115,13 +117,13 @@ async def main() -> None:
             gold: list[str] = []
             bad: list[str] = []
             for e in raw:
-                found = [f"D{int(a)}:{int(b)}" for a, b in re.findall(r"D(\d+):(\d+)", e)]
+                found = [f"D{int(a)}:{int(b)}" for a, b in re.findall(r"D:?(\d+):(\d+)", e)]
                 if not found:
                     bad.append(e)
                 gold.extend(g for g in found if g not in gold)
             questions.append({"conv": ci, "qi": qi, "question": qa["question"], "answer": qa.get("answer"),
                               "raw_evidence": raw, "gold": gold, "bad_evidence": bad,
-                              "unmapped_gold": [g for g in gold if g not in set(dias)],
+                              "unmapped_gold": [g for g in gold if g not in set(dias)],   # 对话里没有这一轮：这题的 all@k 不可算，汇总时排除
                               "seq_to_dia": seq_to_dia, "texts": conversation_texts(conv)})
     total = len(questions)
     todo = questions[args.offset:]
