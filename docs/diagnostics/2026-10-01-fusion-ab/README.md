@@ -26,3 +26,7 @@ Base directory: the local `collab/诊断-事实与多跳-20260930/` folder on th
 - `data/missing_evidence.jsonl` — 137 missing gold items (09-30); 0.6 MB; md5 d9725afa29d15a43bf87f8bb7f287285
 
 Server copies: `/srv/aml/data/diag-locomo/` on Morrow (same file names).
+
+## Status (2026-10-01 08:0x)
+
+Round closed. Conclusion: the candidate fusion (47e590a) is not yet shown to be worth adopting; it stays on `second-shot` / `:8082`, is not selected for the second Full, and nothing further is queued on it. `TIER-A.md` holds the answer-level comparison with post-review corrections (12a–12g); `SECOND-SHOT-TODO.md` lists what is still open for the second shot as a whole, with evidence and minimal verification cost per item.

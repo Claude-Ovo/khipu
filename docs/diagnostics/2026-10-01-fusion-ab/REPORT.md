@@ -1,5 +1,7 @@
 # LoCoMo multi-hop: full relaxed audit + offline fusion simulation (2026-10-01 00:2x)
 
+> **Status (2026-10-01 07:5x): this diagnostic round is closed.** Conclusion: the candidate fusion (47e590a) is not yet shown to be worth adopting; it stays on branch `second-shot` and the experimental instance `:8082` only, is not selected for the second Full, and no further paid experiment on this question is queued. Sections 1 to 12g are the record; section 13 (separate file `SECOND-SHOT-TODO.md`) lists what is still open for the second shot as a whole.
+
 Cost: ¥0. No API calls, no server access. Inputs are the local copies in `../data/` (md5-checked against the server on 09-30).
 
 ## 1. Full relaxed audit of all 137 missing gold items (90 questions)
@@ -277,6 +279,8 @@ Checked against this run's artefacts: 180 logged calls = 45 answers + 135 judge 
 ### 12f. (7,1): how the related evidence is presented in the context
 
 Returned order and date headers of the lines about deaths in the new arm (old arm in brackets): D2:1 dad passed away, #1 [#1]; D2:13 mom passed away, #2 [#2]; D1:5 last photo with her, #4 [#4]; D22:23 mother's cat, #6 [#6]; **D6:4 "I lost a friend last week", #8 [not returned]**; D6:16 "Take care!", #17 [#15]; **D6:8 last photo with Karlie, #20 [#17]**; **D23:22 quote written by a friend "who will never be able to support me. I miss him", #31 [#28]**; D1:6 Jolene's mother, #38 [#36]; D6:6 "comforted by remembering our time together", #99 [#94]. All session-6 lines carry the same header `[2023-02-22 (Wed) 16:12] Deborah:`. The two turns that connect D6:4 to Karlie in the original conversation, Jolene's D6:5 ("Sorry to hear about your friend") and D6:7, are returned in neither arm; the model has to bridge D6:4 to D6:8 across 11 intervening lines by the shared date alone. D23:22 refers to a male friend six months later, whose death the text does not state. Whether a tighter presentation (session grouping, adjacent lines kept together) would change the answer is untested; noted only.
+
+Clarification (10-01 07:5x): the ranks above are positions in the retrieval return list, not distances in the prompt. The answer prompt regroups the returned lines by speaker, so the prompt distance has to be measured on the actual request text. Measured on the logged new-arm request (`tier-a/calls.jsonl`): the prompt is 126 lines; the Deborah block runs from line 16 and holds 93 lines, the Jolene block starts at line 113 with 7 lines. D6:4 is prompt line 24, D6:8 line 36, D23:22 line 42, so the two session-6 lines are 12 lines apart in the prompt as well, but only because every line between them at retrieval ranks 9 to 19 happened to be Deborah's; Jolene's lines are moved to the end of the prompt. In the old arm's request D6:8 is line 33 and D23:22 line 39 (no D6:4). Any future study of presentation should read the request text in `calls.jsonl`, not the return ranks.
 
 ### 12g. Corrections applied after external review (10-01 07:3x)
 
