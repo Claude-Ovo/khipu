@@ -1,0 +1,92 @@
+{
+ "answer_model": "qwen-plus-2025-12-01",
+ "judge_model": "qwen-plus-2025-12-01",
+ "temperature": 0,
+ "seed": 20261001,
+ "enable_thinking": false,
+ "max_tokens": "not set (same as the official pipeline)",
+ "judge_runs": 3,
+ "judge_seeds": [
+  20261001,
+  20261002,
+  20261003
+ ],
+ "arms": [
+  "old",
+  "new",
+  "old_repeat"
+ ],
+ "answer_template_sha256_16": "4b0b989c9a10f810",
+ "judge_template_sha256_16": "44b751660e4e0950",
+ "pipeline_dir": "/srv/aml/pipelines/locomo-refined",
+ "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+ "price_assumption_yuan_per_M": {
+  "in": 0.8,
+  "out": 2.0
+ },
+ "question_date": "not available in locomo10.json and not a field of the official answer template; omitted",
+ "contexts_file": "/srv/aml/data/diag-locomo/fusion-pair-contexts.jsonl",
+ "questions": [
+  [
+   0,
+   7
+  ],
+  [
+   0,
+   55
+  ],
+  [
+   3,
+   55
+  ],
+  [
+   3,
+   75
+  ],
+  [
+   3,
+   79
+  ],
+  [
+   3,
+   83
+  ],
+  [
+   4,
+   7
+  ],
+  [
+   4,
+   14
+  ],
+  [
+   4,
+   18
+  ],
+  [
+   4,
+   21
+  ],
+  [
+   4,
+   38
+  ],
+  [
+   6,
+   8
+  ],
+  [
+   7,
+   1
+  ],
+  [
+   8,
+   77
+  ],
+  [
+   9,
+   60
+  ]
+ ],
+ "started": "2026-10-01 07:07:39 +0800"
+}

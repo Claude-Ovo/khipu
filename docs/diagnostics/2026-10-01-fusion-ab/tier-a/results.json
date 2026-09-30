@@ -1,0 +1,1575 @@
+{
+ "config": {
+  "answer_model": "qwen-plus-2025-12-01",
+  "judge_model": "qwen-plus-2025-12-01",
+  "temperature": 0,
+  "seed": 20261001,
+  "enable_thinking": false,
+  "max_tokens": "not set (same as the official pipeline)",
+  "judge_runs": 3,
+  "judge_seeds": [
+   20261001,
+   20261002,
+   20261003
+  ],
+  "arms": [
+   "old",
+   "new",
+   "old_repeat"
+  ],
+  "answer_template_sha256_16": "4b0b989c9a10f810",
+  "judge_template_sha256_16": "44b751660e4e0950",
+  "pipeline_dir": "/srv/aml/pipelines/locomo-refined",
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "price_assumption_yuan_per_M": {
+   "in": 0.8,
+   "out": 2.0
+  },
+  "question_date": "not available in locomo10.json and not a field of the official answer template; omitted",
+  "contexts_file": "/srv/aml/data/diag-locomo/fusion-pair-contexts.jsonl",
+  "questions": [
+   [
+    0,
+    7
+   ],
+   [
+    0,
+    55
+   ],
+   [
+    3,
+    55
+   ],
+   [
+    3,
+    75
+   ],
+   [
+    3,
+    79
+   ],
+   [
+    3,
+    83
+   ],
+   [
+    4,
+    7
+   ],
+   [
+    4,
+    14
+   ],
+   [
+    4,
+    18
+   ],
+   [
+    4,
+    21
+   ],
+   [
+    4,
+    38
+   ],
+   [
+    6,
+    8
+   ],
+   [
+    7,
+    1
+   ],
+   [
+    8,
+    77
+   ],
+   [
+    9,
+    60
+   ]
+  ],
+  "started": "2026-10-01 07:07:39 +0800"
+ },
+ "summary": {
+  "questions": 15,
+  "calls": 180,
+  "tokens_in": 347116,
+  "tokens_out": 13741,
+  "cost_yuan": 0.3052,
+  "stopped": null,
+  "finished": "2026-10-01 07:13:52 +0800"
+ },
+ "results": [
+  {
+   "conv": 0,
+   "qi": 7,
+   "question": "What is Caroline's relationship status?",
+   "gold_answer": "Single",
+   "arms": {
+    "old": {
+     "answer": "Caroline is single and pursuing adoption.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "d1e4348e391c6cf8",
+     "prompt_tokens": 5425,
+     "completion_tokens": 8,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption is non-contradictory and does not alter the relationship status.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption is non-contradictory and does not alter the relationship status.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption is non-contradictory and does not alter the relationship status.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Caroline is single.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "e36d21e855874996",
+     "prompt_tokens": 5458,
+     "completion_tokens": 5,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Caroline is single\" clearly includes and paraphrases the gold answer \"Single\" without contradiction, satisfying the inclusion + non-contradiction principle; the relationship status is accurately conveyed in the same semantic form.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Caroline is single\" clearly includes and paraphrases the gold answer \"Single\" without contradiction, satisfying the inclusion + non-contradiction principle.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Caroline is single\" clearly includes and paraphrases the gold answer \"Single\" without contradiction, satisfying the inclusion + non-contradiction principle.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Caroline is single and pursuing adoption to become a mom.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "d1e4348e391c6cf8",
+     "prompt_tokens": 5425,
+     "completion_tokens": 12,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption is non-contradictory elaboration.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption is non-contradictory and does not alter or omit the key relationship status.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Caroline is single\", which directly matches the gold answer \"Single\" without contradiction, and the additional information about pursuing adoption does not negate or alter her relationship status.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 0,
+   "qi": 55,
+   "question": "What subject have Caroline and Melanie both painted?",
+   "gold_answer": "Sunsets",
+   "arms": {
+    "old": {
+     "answer": "Sunsets",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "959f7c471594c459",
+     "prompt_tokens": 5954,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\" in content, form, and specificity, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\", with no contradiction and full inclusion of the key content.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\" in content, form, and specificity, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Sunsets",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "2980cc3346c64e66",
+     "prompt_tokens": 5977,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\" in content, granularity, and form, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\", with no contradiction and full inclusion of the key content.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\", with no contradiction and full inclusion of the key content.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Sunsets",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "959f7c471594c459",
+     "prompt_tokens": 5954,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\" in content, granularity, and form, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\", with no contradiction and full inclusion of the key content.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Sunsets\" exactly matches the gold answer \"Sunsets\" in content, form, and specificity, with no contradiction or omission.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 3,
+   "qi": 55,
+   "question": "What is Joanna inspired by?",
+   "gold_answer": "Personal experiences,her own journey ofself discovery, Nate,nature, validation,stories about findingcourage and takingrisks, people she knows, stuff she sees, imagination",
+   "arms": {
+    "old": {
+     "answer": "Nature, personal experiences, self-discovery, stories, people, visuals, dreams, hiking, turtles, quotes, pictures, sunsets, supportive friends, writing, movies, books, DIYs, and her own journey.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "9f1077813986d5a3",
+     "prompt_tokens": 5489,
+     "completion_tokens": 45,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer—personal experiences, her own journey of self-discovery (paraphrased as \"self-discovery\" and \"her own journey\"), nature, stories (about courage/risks), people she knows (\"people\", \"supportive friends\"), stuff she sees (\"visuals\", \"pictures\", \"sunsets\"), imagination (implied in \"dreams\", \"movies\", \"books\", \"writing\", \"DIYs\", \"quotes\")—and adds no contradictory content; extra items are non-contradictory elaborations or finer details of the gold’s broader categories (e.g., \"hiking\", \"turtles\", \"sunsets\" fall under nature/stuff she sees; \"dreams\", \"movies\", \"books\" under imagination/stories).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer—personal experiences, her own journey of self-discovery (paraphrased as \"self-discovery\" and \"her own journey\"), nature, stories (about courage/risks), people she knows (\"people\", \"supportive friends\"), stuff she sees (\"visuals\", \"pictures\", \"sunsets\", \"movies\", \"books\", \"DIYs\"), imagination (implied in \"dreams\", \"writing\", \"quotes\")—and while it adds many extra non-contradictory items, the core requirement is inclusion + non-contradiction, and no gold element is omitted or contradicted; the extra items are harmless elaborations or finer details (e.g., \"stories\" → \"stories about finding courage and taking risks\" is covered by \"stories\", and \"stuff she sees\" is elaborated into multiple visual examples).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer—personal experiences, her own journey of self-discovery (paraphrased as \"self-discovery\" and \"her own journey\"), nature, stories (about finding courage and taking risks), people she knows (\"people\"), stuff she sees (\"visuals\", \"pictures\", \"sunsets\"), imagination (implied in \"dreams\", \"quotes\", \"movies\", \"books\", \"DIYs\", \"writing\")—and none contradict; extra items are non-contradictory elaborations or harmless expansions, not distinct new facts violating the list rule (since this is a preference/benefit question, covering *any* of the gold elements suffices, and it covers *all*).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Nature, personal experiences, self-discovery, stories (like the brave turtle), people, places (e.g., Woodhaven), dreams, hiking, turtles, sunsets, supportive friends, writing, reading, movies, cooking, DIYs, and her writers group.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "ba03592aa351d597",
+     "prompt_tokens": 5615,
+     "completion_tokens": 54,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer (nature, personal experiences, self-discovery, stories about courage/risks, people she knows, imagination — with \"stories (like the brave turtle)\", \"people\", \"dreams\", \"hiking\", \"sunsets\", \"supportive friends\", \"writing\", etc. serving as non-contradictory elaborations or paraphrases), and adds no contradictory content; while it includes extra items (e.g., cooking, DIYs, writers group), these are harmless expansions that do not negate or misrepresent any gold element — and since the question is a preference/benefit type (\"What is Joanna inspired by?\"), inclusion of *any* gold element without contradiction suffices, but here *all* core gold themes are clearly present and aligned.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer (nature, personal experiences, self-discovery, stories about courage/risks, people she knows, and imagination — implicitly covered by \"dreams\", \"stories (like the brave turtle)\", \"supportive friends\", \"writing\", \"reading\", \"movies\", etc.), with no contradictions; extra items (e.g., hiking, sunsets, cooking) are non-contradictory and do not violate the \"extra items → WRONG\" rule because the question is a preference/benefit type (\"What is Joanna inspired by?\"), where inclusion of *any* gold element suffices — and here *all* gold elements are meaningfully covered, often via paraphrase or natural elaboration (e.g., \"her own journey of self discovery\" ↔ \"self-discovery\"; \"stories about finding courage and taking risks\" ↔ \"stories (like the brave turtle)\"; \"people she knows\" ↔ \"supportive friends\", \"people\"; \"imagination\" ↔ \"dreams\", \"writing\", \"movies\").  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer (nature, personal experiences, self-discovery, stories about courage/risks, people she knows, and imagination — with \"stories (like the brave turtle)\", \"people\", \"dreams\", \"hiking\", \"sunsets\", \"supportive friends\", \"writing\", etc. serving as non-contradictory elaborations or paraphrases; \"Nate\", \"validation\", and \"stuff she sees\" are plausibly covered under broader terms like \"people\", \"supportive friends\", and \"stuff she sees\" → implied by \"places\", \"movies\", \"reading\", etc., and no element is contradicted or omitted), and adds only extra non-contradictory details — which is permissible under the core principle of inclusion + non-contradiction and the exception for elaboration.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Nature, personal experiences, self-discovery, stories, people, visuals, dreams, hiking, turtles, quotes, pictures, sunsets, supportive friends, and her own journey.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "9f1077813986d5a3",
+     "prompt_tokens": 5489,
+     "completion_tokens": 36,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer (nature, personal experiences, self-discovery, stories, people, and her own journey), albeit with paraphrasing and expansion (e.g., “self-discovery” for “her own journey of self discovery”, “visuals”/“pictures”/“sunsets” for “stuff she sees”, “supportive friends” for “people she knows”, “dreams”/“quotes” as non-contradictory elaborations of imagination/inspiration), and no element is omitted or contradicted.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer—personal experiences, self-discovery (paraphrased as \"her own journey\"), nature, stories (specifically about courage/risks), people she knows, and imagination (covered by \"dreams\", \"pictures\", \"visuals\", \"quotes\", \"sunsets\")—without contradiction; extra items (e.g., turtles, hiking) are harmless elaborations or non-contradictory additions, and no gold element is omitted or misrepresented.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold answer (nature, personal experiences, self-discovery, stories, people, and her own journey), albeit with paraphrasing and expansion (e.g., “self-discovery” for “her own journey of self discovery”, “visuals”/“pictures”/“sunsets” for “stuff she sees”, “supportive friends” for “people she knows”, “dreams”/“quotes” for “imagination”, and “hiking”/“turtles” as non-contradictory elaborations of nature or personal experience); no gold element is missing or contradicted, and no extraneous *distinct* facts are added that violate the list rule — the extra items (e.g., hiking, turtles, quotes) are plausibly subsumed under or illustrative of the gold’s broader categories.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 3,
+   "qi": 75,
+   "question": "What are Nate's favorite desserts?",
+   "gold_answer": "coconut milk icecream, dairy-free chocolate cake with berries, chocolate and mixed-berry icecream, dairy-free chocolate mousse",
+   "arms": {
+    "old": {
+     "answer": "Coconut milk ice cream and dairy-free chocolate mousse.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "08efb9d7331b66b7",
+     "prompt_tokens": 5569,
+     "completion_tokens": 12,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two of the four desserts listed in the gold answer (coconut milk ice cream and dairy-free chocolate mousse), and since this is a preference/benefit question (\"What are Nate's favorite desserts?\"), the instruction states that including *any one* of the gold elements without contradiction is sufficient for CORRECT — and both items match exactly (with minor orthographic variation: \"icecream\" vs. \"ice cream\" is a harmless spelling variant, not a contradiction).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") without contradicting any part of the gold, and since this is a preference question (\"What are Nate's favorite desserts?\"), the generated answer only needs to include *any one* of the listed favorites — it includes two, both matching the gold’s items (with minor orthographic variation: \"ice cream\" vs \"icecream\" is harmless; \"dairy-free chocolate mousse\" matches exactly). No contradiction or misrepresentation occurs.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; however, the gold lists four distinct desserts, and the generated answer omits two (\"dairy-free chocolate cake with berries\", \"chocolate and mixed-berry icecream\") — since this is a list of DISTINCT facts and the generated answer does not cover all of them (and the omission is not justified by a preference/benefit exception, as the question asks for *favorite desserts*, not *a* favorite or *most valued* one), it fails the \"all must be covered\" requirement.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 2,
+     "majority": "CORRECT",
+     "unanimous": false
+    },
+    "new": {
+     "answer": "Coconut milk ice cream and dairy-free chocolate mousse.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "757a5f003235c6f1",
+     "prompt_tokens": 5487,
+     "completion_tokens": 12,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; since this is a preference question (\"What are Nate's favorite desserts?\"), inclusion of *any one* non-contradictory item from the gold list is sufficient for CORRECT per the Preference/Benefit rule.\n\n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; since this is a preference question (\"favorite desserts\"), inclusion of *any one* non-contradictory item from the gold list suffices for CORRECT — and here two are included.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; however, the gold lists four distinct desserts, and the generated answer omits two (\"dairy-free chocolate cake with berries\", \"chocolate and mixed-berry icecream\") without elaboration or splitting — since this is a list of DISTINCT facts and the generated answer does not cover all of them nor elaborates omitted items, it fails the \"all must be covered\" requirement.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 2,
+     "majority": "CORRECT",
+     "unanimous": false
+    },
+    "old_repeat": {
+     "answer": "Coconut milk ice cream and dairy-free chocolate mousse.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "08efb9d7331b66b7",
+     "prompt_tokens": 5569,
+     "completion_tokens": 12,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; since this is a preference question (\"favorite desserts\"), inclusion of *any one* non-contradictory item from the gold list suffices for CORRECT — and here two are provided.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two of the four desserts listed in the gold answer (coconut milk ice cream and dairy-free chocolate mousse), but the question asks for Nate's *favorite desserts* (plural) and the gold provides a specific list of four distinct items; since the generated answer omits two explicitly stated favorites (dairy-free chocolate cake with berries, chocolate and mixed-berry ice cream) and does not cover all of them, it fails the \"Lists of DISTINCT facts\" requirement — extra items are disallowed, but missing items are also disallowed, and no exception applies here (no elaboration or splitting).  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes two items from the gold list (\"coconut milk icecream\" and \"dairy-free chocolate mousse\") and does not contradict any part of the gold; since this is a preference question (\"favorite desserts\"), inclusion of *any one* non-contradictory item from the gold list suffices for CORRECT — and here two are included.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 2,
+     "majority": "CORRECT",
+     "unanimous": false
+    }
+   }
+  },
+  {
+   "conv": 3,
+   "qi": 79,
+   "question": "How many screenplays has Joanna written?",
+   "gold_answer": "three",
+   "arms": {
+    "old": {
+     "answer": "At least three.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "d0a1c5d6ff028d26",
+     "prompt_tokens": 5673,
+     "completion_tokens": 4,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which encompasses exactly three) and does not contradict it; the core numerical claim is preserved and broadened non-contradictorily, satisfying the inclusion + non-contradiction principle.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which encompasses exactly three) and does not contradict it; the core numeric claim is preserved and broadened non-contradictorily, satisfying the inclusion + non-contradiction principle.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" is consistent with and does not contradict the exact count of three), and no contradiction or exclusion occurs — the core principle of inclusion + non-contradiction is satisfied.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "At least three.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "ed698fc08ccafc64",
+     "prompt_tokens": 5986,
+     "completion_tokens": 4,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which is consistent with and does not contradict the exact count of three), and no contradiction is introduced; the core content (the number three) is preserved and non-contradictory.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which is consistent with and does not contradict the exact count of three), and no contradiction or exclusion occurs — per the inclusion + non-contradiction principle, this is GENEROUSLY acceptable.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which encompasses exactly three) and does not contradict it; the core numerical claim is preserved and non-contradictory.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "At least three.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "d0a1c5d6ff028d26",
+     "prompt_tokens": 5673,
+     "completion_tokens": 4,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which encompasses exactly three) and does not contradict it; the core numeric claim is preserved and broadened non-contradictorily, satisfying the inclusion + non-contradiction principle.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which encompasses exactly three) and does not contradict it; the core numerical claim is preserved without granularity or factual mismatch.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"At least three\" includes the gold answer \"three\" (since \"at least three\" means three or more, which is non-contradictory and encompasses exactly three), and no contradiction is introduced.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 3,
+   "qi": 83,
+   "question": "What are the skills that Nate has helped others learn?",
+   "gold_answer": "coconut milk ice cream recipe, reset high scores, tips to improve gaming skills",
+   "arms": {
+    "old": {
+     "answer": "Gaming tips, vegan ice cream recipes",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "deec7c8aaf15da8d",
+     "prompt_tokens": 5213,
+     "completion_tokens": 8,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Gaming tips, vegan ice cream recipes\" partially matches the gold: \"gaming tips\" aligns with \"tips to improve gaming skills\", and \"vegan ice cream recipes\" is a plausible paraphrase of \"coconut milk ice cream recipe\" (coconut milk ice cream is typically vegan), but it omits \"reset high scores\" — a distinct, non-redundant skill listed in the gold. Since the gold lists three distinct skills joined by commas and the generated answer only covers two (and does not include or clearly elaborate \"reset high scores\"), it fails the requirement to cover all distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"gaming tips\" (a clear paraphrase of \"tips to improve gaming skills\") and \"vegan ice cream recipes\" (which encompasses \"coconut milk ice cream recipe\", as coconut milk ice cream is a subset of vegan ice cream recipes), and omits \"reset high scores\" — but since this is a preference/benefit-style question asking for skills Nate has helped others learn (implying a non-exhaustive list of examples), and the generated answer includes at least one valid skill without contradiction, it satisfies the preference/benefit rule requiring only *any one* of the gold elements. However, note: the gold lists three *distinct* skills, and the question asks \"What are the skills...\" (plural, open-ended), but per the instructions, for preference/benefit questions (e.g., “what X likes/values most”), if gold lists multiple reasons/aspects, the generated answer only needs to include **any one** of them without contradiction to be CORRECT. While the question wording isn’t explicitly about preference or benefit, the structure (\"skills that Nate has helped others learn\") functions similarly — it’s a list of exemplars, not a closed set requiring completeness. Crucially, \"reset high scores\" is a distinct, non-overlapping skill not covered, but the rule explicitly permits partial coverage for such questions. Also, \"vegan ice cream recipes\" reasonably includes \"coconut milk ice cream recipe\", and \"gaming tips\" matches \"tips to improve gaming skills\". No contradiction exists. So CORRECT.\n\n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Gaming tips, vegan ice cream recipes\" partially matches the gold: \"gaming tips\" aligns with \"tips to improve gaming skills\", and \"vegan ice cream recipes\" is a plausible paraphrase of \"coconut milk ice cream recipe\" (coconut milk ice cream is typically vegan), but it omits \"reset high scores\" — a distinct, non-redundant skill listed in the gold. Since the gold lists three distinct skills joined by commas and the generated answer only covers two (and does not include or clearly elaborate \"reset high scores\"), it fails the requirement to cover all distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 1,
+     "majority": "WRONG",
+     "unanimous": false
+    },
+    "new": {
+     "answer": "How to improve their game, vegan ice cream recipes",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "cb9a9b44bf1a340a",
+     "prompt_tokens": 5165,
+     "completion_tokens": 10,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which overlaps with \"coconut milk ice cream recipe\" (a specific vegan ice cream recipe) and \"how to improve their game\" which aligns with \"tips to improve gaming skills\", but it omits \"reset high scores\" entirely — and since the gold lists three distinct skills joined by commas, all must be covered; omission of one distinct fact makes it WRONG.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which overlaps with \"coconut milk ice cream recipe\" (a specific vegan ice cream), and \"how to improve their game\" is a clear paraphrase of \"tips to improve gaming skills\", but it completely omits \"reset high scores\", a distinct fact in the gold list — and since the gold lists three distinct skills joined by commas, all must be covered; the omission makes it incomplete.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which is not equivalent to \"coconut milk ice cream recipe\" (a specific recipe, not a general category), and \"how to improve their game\" is a vague paraphrase of \"tips to improve gaming skills\", but it completely omits \"reset high scores\", a distinct and non-redundant skill from the gold list; since the gold lists three distinct skills and the generated answer fails to include one of them (and misrepresents another), it violates the requirement to cover all distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "How to improve their game, vegan ice cream recipes",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "deec7c8aaf15da8d",
+     "prompt_tokens": 5213,
+     "completion_tokens": 10,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which is not equivalent to \"coconut milk ice cream recipe\" (a specific recipe, not a general category), and \"how to improve their game\" is a vague paraphrase of \"tips to improve gaming skills\", but it completely omits \"reset high scores\", a distinct and non-redundant element in the gold list; since the gold lists three distinct skills and the generated answer only plausibly covers one (with vagueness) and misses one entirely, it fails the requirement to cover all distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which is not equivalent to \"coconut milk ice cream recipe\" (a specific recipe, not a general category), and \"how to improve their game\" is a vague paraphrase of \"tips to improve gaming skills\", but it completely omits \"reset high scores\", a distinct fact required by the gold answer; since the gold lists three distinct skills and the generated answer only arguably covers one (imprecisely) and misses the other two, it fails the \"all distinct facts\" requirement.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"vegan ice cream recipes\" which is not equivalent to \"coconut milk ice cream recipe\" (a specific recipe, not a general category), and \"how to improve their game\" is a vague paraphrase of \"tips to improve gaming skills\", but it completely omits \"reset high scores\", a distinct and non-redundant skill from the gold list; since the gold lists three distinct skills and the generated answer only plausibly covers one (with vagueness) and misses one entirely, it fails the \"all distinct facts\" requirement.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 4,
+   "qi": 7,
+   "question": "Which geographical locations has Tim been to?",
+   "gold_answer": "California, London, the Smoky Mountains",
+   "arms": {
+    "old": {
+     "answer": "London, UK, Galway, The Cliffs of Moher",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "da1f8ba63ce223fc",
+     "prompt_tokens": 5569,
+     "completion_tokens": 13,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds \"UK\" (redundant but not contradictory), and replaces \"California\" and \"the Smoky Mountains\" with \"Galway\" and \"The Cliffs of Moher\", which are not in the gold and are distinct geographical locations — thus failing to include all required locations and introducing unsupported ones.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds Galway and The Cliffs of Moher (neither in the gold) and omits California and the Smoky Mountains (both required); since the gold lists three distinct locations and the generated answer includes only one of them while adding two unmentioned ones, it fails to cover all required elements and introduces extraneous information — thus violating the \"Lists of DISTINCT facts\" rule.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds Galway and The Cliffs of Moher (neither in the gold) and omits California and the Smoky Mountains (both required by the gold); since the gold lists three distinct locations and the generated answer includes only one of them while excluding two and adding two others, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "London, Smoky Mountains, UK (including a castle), Galway, The Cliffs of Moher",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "3b3ae38963f41999",
+     "prompt_tokens": 5666,
+     "completion_tokens": 21,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"London\" and \"Smoky Mountains\" (matching \"the Smoky Mountains\" — article omission is harmless), but omits \"California\" and adds \"UK (including a castle)\", \"Galway\", and \"The Cliffs of Moher\", which are not in the gold; since the gold lists three distinct locations and the generated answer misses one (California) and adds extraneous ones, it fails the \"all must be covered, no extra distinct facts\" rule for lists of distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes only \"London\" and \"Smoky Mountains\" from the gold answer (\"California, London, the Smoky Mountains\"), but omits \"California\" entirely and adds unrelated locations (\"UK (including a castle)\", \"Galway\", \"The Cliffs of Moher\") — violating the rule that extra non-contradictory items generally count as WRONG when the gold lists multiple distinct facts and the generated answer fails to include all of them.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes only \"London\" from the gold answer's three locations (\"California, London, the Smoky Mountains\"), omits \"California\" and \"the Smoky Mountains\" entirely, and adds unrelated locations (\"UK (including a castle), Galway, The Cliffs of Moher\") — violating the requirement to cover all distinct facts in the gold answer without contradiction or omission.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "London, UK, The Cliffs of Moher, Galway",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "da1f8ba63ce223fc",
+     "prompt_tokens": 5569,
+     "completion_tokens": 13,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds UK (redundant but not contradictory), and replaces California and the Smoky Mountains with The Cliffs of Moher and Galway — which are not in the gold and are distinct, unmentioned locations; since the gold specifies three locations and the generated answer includes only one correct match while substituting the other two with different places, it fails to include all gold elements and introduces non-overlapping content.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds UK (redundant but not contradictory), and replaces California and the Smoky Mountains with The Cliffs of Moher and Galway — which are not in the gold and are distinct, unmentioned locations; since the gold lists three specific locations and the generated answer omits two and substitutes two others, it fails to include all gold elements and introduces non-overlapping, non-paraphrased content.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer lists London (matching the gold), but adds \"UK\", \"The Cliffs of Moher\", and \"Galway\", while omitting \"California\" and \"the Smoky Mountains\"; since the gold specifies three distinct locations and the generated answer includes only one of them and introduces two others not in the gold, it fails to cover all required locations and adds extraneous ones — violating the \"Lists of DISTINCT facts\" rule.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 4,
+   "qi": 14,
+   "question": "What kind of writing does Tim do?",
+   "gold_answer": "comments on favorite books in a fantasy literature forum, articles on fantasy novels, studying characters, themes, and making book recommendations, writing a fantasy novel",
+   "arms": {
+    "old": {
+     "answer": "Writes articles about fantasy novels for an online magazine.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b520149e57b7bd3f",
+     "prompt_tokens": 5703,
+     "completion_tokens": 10,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is one of the elements in the gold answer (\"articles on fantasy novels\"), and does not contradict any part of the gold; however, it omits the other distinct activities (comments in a forum, studying characters/themes, book recommendations, writing a fantasy novel). Since the gold lists multiple *distinct* facts (joined by commas) and the generated answer includes only one without covering all, and no exception applies (e.g., no elaboration or splitting of elements), it fails the \"all distinct facts\" requirement.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is one of the elements in the gold answer (\"articles on fantasy novels\"), and does not contradict any part of the gold; however, it omits the other distinct activities (comments in a forum, studying characters/themes, book recommendations, writing a fantasy novel), and since the gold lists multiple *distinct* facts (not preferences/benefits), the generated answer must cover *all* of them to be CORRECT — but it only covers one and adds no others, so it fails the \"all distinct facts\" requirement.  \nWRONG\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is one of the elements in the gold answer (\"articles on fantasy novels\"), and does not contradict any part of the gold; however, it omits the other distinct activities (comments in a forum, studying characters/themes, book recommendations, writing a fantasy novel). Since the gold lists multiple *distinct* facts (joined by commas) and the generated answer includes only one without covering all, and no exception (e.g., elaboration/splitting) applies, it fails the \"all distinct facts\" requirement.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Writes articles about fantasy novels.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "cf97cb81d426ec19",
+     "prompt_tokens": 5714,
+     "completion_tokens": 6,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Writes articles about fantasy novels\" is a subset of the gold answer, which includes \"articles on fantasy novels\" as one of several activities; since the question asks \"What kind of writing does Tim do?\" and the gold lists multiple kinds (including articles), the generated answer correctly includes at least one non-contradictory element from the gold without omitting or misrepresenting it — and preference/benefit rules apply here (only one required).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Writes articles about fantasy novels\" is a subset of the gold answer, which includes \"articles on fantasy novels\" as one of several activities; since the question asks \"What kind of writing does Tim do?\" and the generated answer correctly identifies one valid type without contradicting any part of the gold, it satisfies the preference/benefit rule (only one element needed) and adheres to inclusion + non-contradiction.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Writes articles about fantasy novels\" is a subset of the gold answer, which includes \"articles on fantasy novels\" as one of several activities; since the question asks \"What kind of writing does Tim do?\" and the generated answer correctly identifies one valid kind without contradicting any part of the gold, it satisfies the inclusion + non-contradiction principle (and preference/benefit exception applies here as it's a list of writing types, not a strict multi-fact requirement).  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Writes articles about fantasy novels for an online magazine.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b520149e57b7bd3f",
+     "prompt_tokens": 5703,
+     "completion_tokens": 10,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is explicitly included in the gold answer, and does not contradict any part of it; however, it omits other elements (comments in a forum, studying characters/themes, book recommendations, writing a novel), but since the question asks \"What kind of writing does Tim do?\" — a preference/benefit-style question where multiple kinds are listed — including *any one* non-contradictory kind suffices for CORRECT.\n\n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is one of the elements in the gold answer (\"articles on fantasy novels\"), and does not contradict any part of the gold; however, it omits the other distinct activities listed in the gold (comments in a forum, studying characters/themes, book recommendations, writing a fantasy novel). Since the gold lists multiple *distinct* facts (joined by commas) and the generated answer includes only one without covering all, and no exception (e.g., elaboration or splitting) applies, it fails the \"all must be covered\" requirement for lists of distinct facts.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions \"articles about fantasy novels\", which is one of the elements in the gold answer (\"articles on fantasy novels\"), and does not contradict any part of the gold; however, it omits the other distinct activities (comments in a forum, studying characters/themes, book recommendations, writing a fantasy novel). Since the gold lists multiple *distinct* facts (joined by commas) and the generated answer includes only one without covering all, and no exception applies (no elaboration or splitting of elements), it fails the \"all must be covered\" requirement for lists of distinct facts. Therefore, it is WRONG.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      }
+     ],
+     "correct_votes": 1,
+     "majority": "WRONG",
+     "unanimous": false
+    }
+   }
+  },
+  {
+   "conv": 4,
+   "qi": 18,
+   "question": "What authors has Tim read books from?",
+   "gold_answer": "J.K. Rowling, R.R. Martin, Patrick Rothfuss, Paulo Coelho, and J. R. R. Tolkien.",
+   "arms": {
+    "old": {
+     "answer": "Patrick Rothfuss, J.K. Rowling, George R.R. Martin, Paulo Coelho",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b7f7ef0d829c932c",
+     "prompt_tokens": 6103,
+     "completion_tokens": 19,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors from the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor variation in name formatting — \"George R.R. Martin\" matches \"R.R. Martin\"), but omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one without contradiction or elaboration, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor variation in name formatting — George R.R. Martin instead of R.R. Martin), but it omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one without contradiction or elaboration, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor variation in name formatting — George R.R. Martin instead of R.R. Martin), but it omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one without contradiction or elaboration, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Patrick Rothfuss, J.K. Rowling, George R. R. Martin, Paulo Coelho",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "784b111d162eda5d",
+     "prompt_tokens": 6038,
+     "completion_tokens": 20,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor spelling variation — George R. R. Martin instead of R.R. Martin), but omits J.R.R. Tolkien entirely; since the gold lists distinct authors and all must be covered, the omission of Tolkien makes the answer incomplete and thus WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor spelling variation — George R. R. Martin instead of R.R. Martin), but omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one required element without contradiction or elaboration, it fails to cover all gold facts.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits J.R.R. Tolkien and uses \"George R.R. Martin\" instead of \"R.R. Martin\", but \"George R.R. Martin\" is a common full-name variant of \"R.R. Martin\" and does not contradict it; however, the omission of Tolkien — a distinct, non-redundant author listed in the gold — means not all required elements are present, and extra items are not added, but missing one is fatal for a list of distinct facts. Therefore, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Patrick Rothfuss, J.K. Rowling, George R. R. Martin, Paulo Coelho",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b7f7ef0d829c932c",
+     "prompt_tokens": 6103,
+     "completion_tokens": 20,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor spelling variation — George R. R. Martin instead of R.R. Martin), but omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one required element without contradiction or elaboration, it fails the \"all distinct facts\" requirement.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor spelling variation — \"George R. R. Martin\" for \"R.R. Martin\"), but omits J.R.R. Tolkien entirely; since the gold lists distinct authors and the generated answer is missing one required element without contradiction or elaboration, it fails the \"all distinct facts must be covered\" rule.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes four of the five authors listed in the gold answer (J.K. Rowling, Patrick Rothfuss, Paulo Coelho, and — with a minor spelling variation — \"George R. R. Martin\" for \"R.R. Martin\"), but omits J.R.R. Tolkien entirely; since the gold lists five distinct authors and the generated answer is missing one without contradiction or elaboration, and extra items are not present to compensate, it fails to cover all required distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 4,
+   "qi": 21,
+   "question": "Which US cities does John mention visiting to Tim?",
+   "gold_answer": "Seattle, Chicago, New York",
+   "arms": {
+    "old": {
+     "answer": "New York City, Seattle",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "ebb621931424c9b5",
+     "prompt_tokens": 6514,
+     "completion_tokens": 5,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Seattle\" and \"New York City\", which correspond to \"Seattle\" and \"New York\" from the gold; however, it omits \"Chicago\", and adding \"City\" to \"New York\" is a harmless elaboration, but the missing \"Chicago\" means not all three required cities are present — and since the gold lists three distinct cities (joined by commas), all must be covered.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes only two of the three cities listed in the gold answer (Seattle and New York), omitting Chicago; since the gold lists three distinct cities and the generated answer fails to include all of them (and adding \"City\" to \"New York\" is not a permissible elaboration—it’s a stylistic variant but doesn’t compensate for the missing city), it does not satisfy the requirement to cover all distinct facts.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Seattle\" and \"New York City\", which correspond to \"Seattle\" and \"New York\" from the gold (with \"New York City\" being a clear, non-contradictory paraphrase of \"New York\"); however, it omits \"Chicago\", and adding \"City\" does not compensate for the missing distinct city — since the gold lists three distinct cities and the generated answer only includes two, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "New York City, Seattle, Chicago",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "e9378c239a69bfd3",
+     "prompt_tokens": 6558,
+     "completion_tokens": 7,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer lists the same three cities as the gold answer—New York (equivalent to New York City), Seattle, and Chicago—in a different order but with no omissions, contradictions, or extraneous items; \"New York City\" is a standard, non-contradictory expansion of \"New York\" in this context.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer lists the same three cities as the gold answer—New York (equivalent to New York City), Seattle, and Chicago—in a different order but with no omissions, contradictions, or extraneous items; \"New York City\" is a clear, non-contradictory paraphrase of \"New York\" in this context.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer lists the same three cities as the gold answer—New York (equivalent to New York City), Seattle, and Chicago—in a different order but with no omissions, contradictions, or extraneous items; \"New York City\" is a clear, non-contradictory paraphrase of \"New York\" in this context.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "New York City, Seattle",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "ebb621931424c9b5",
+     "prompt_tokens": 6514,
+     "completion_tokens": 5,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes only two of the three cities listed in the gold answer (Seattle and New York), omitting Chicago, and does not include any paraphrase or elaboration of Chicago; since the gold lists three distinct cities and the generated answer is missing one without contradiction or elaboration, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes only two of the three cities listed in the gold answer (Seattle and New York, though \"New York City\" is a valid paraphrase of \"New York\"), but omits \"Chicago\"; since the gold lists three distinct cities and the generated answer misses one without contradiction or elaboration, it fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes \"Seattle\" and \"New York City\" (a clear paraphrase of \"New York\"), but omits \"Chicago\", which is a required distinct city in the gold list; since the gold lists three cities joined by commas (implying all must be covered) and the generated answer is missing one, it fails the \"all distinct facts\" requirement.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 4,
+   "qi": 38,
+   "question": "which country has Tim visited most frequently in his travels?",
+   "gold_answer": "UK",
+   "arms": {
+    "old": {
+     "answer": "United Kingdom",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "4d8f2acd84a81139",
+     "prompt_tokens": 6045,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"United Kingdom\" is a clear and unambiguous paraphrase of \"UK\", with no contradiction and full semantic equivalence.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"UK\" and \"United Kingdom\" are unambiguous, standard paraphrases of the same country, with no contradiction or loss of meaning.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"UK\" and \"United Kingdom\" are unambiguous, standard, and equivalent abbreviations/names for the same country, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "United Kingdom",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "f8553c7d69e4b512",
+     "prompt_tokens": 6086,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"United Kingdom\" is a clear and unambiguous paraphrase of \"UK\", with no contradiction and full inclusion of the gold answer's key content.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"United Kingdom\" is a clear and unambiguous paraphrase of \"UK\", with no contradiction and full semantic equivalence.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"UK\" and \"United Kingdom\" are unambiguous, standard paraphrases of the same country, with no contradiction or loss of meaning.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "United Kingdom",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "4d8f2acd84a81139",
+     "prompt_tokens": 6045,
+     "completion_tokens": 2,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"UK\" and \"United Kingdom\" are unambiguous, standard paraphrases of the same country, with no contradiction or missing information.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "\"United Kingdom\" is a clear paraphrase of \"UK\", with no contradiction and full inclusion of the gold answer’s key content.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"United Kingdom\" is a clear paraphrase of the gold answer \"UK\", with no contradiction and full semantic equivalence.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 6,
+   "qi": 8,
+   "question": "How many pets does James have?",
+   "gold_answer": "Three dogs.",
+   "arms": {
+    "old": {
+     "answer": "Three dogs.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "3b0c3a51043dfdf7",
+     "prompt_tokens": 4897,
+     "completion_tokens": 3,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Three dogs\" exactly matches the gold answer \"Three dogs\" in content, granularity, and meaning, with no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Three dogs.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "663aad3769c5e5e9",
+     "prompt_tokens": 4955,
+     "completion_tokens": 3,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Three dogs.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "3b0c3a51043dfdf7",
+     "prompt_tokens": 4897,
+     "completion_tokens": 3,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and granularity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and specificity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer exactly matches the gold answer in content and granularity, stating \"Three dogs\" without adding, omitting, or contradicting any information.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 7,
+   "qi": 1,
+   "question": "Which of Deborah`s family and friends have passed away?",
+   "gold_answer": "mother, father, her friend Karlie",
+   "arms": {
+    "old": {
+     "answer": "Deborah’s dad, mom, and Karlie.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "3f94cba5d5ca43b6",
+     "prompt_tokens": 5436,
+     "completion_tokens": 11,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three individuals from the gold answer—“mother” and “father” are paraphrased as “mom” and “dad” (common, non-contradictory synonyms), and “her friend Karlie” is accurately rendered as “Karlie”, with the familial/friendly relationships preserved and no contradiction or omission.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three individuals from the gold answer—“mother” and “father” are paraphrased as “mom” and “dad”, which are common, non-contradictory synonyms, and “her friend Karlie” is accurately rendered as “Karlie”, with the relationship context preserved implicitly by listing her alongside immediate family in the same clause; no extra or contradictory information is added.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer \"Deborah’s dad, mom, and Karlie\" is a clear paraphrase of the gold answer \"mother, father, her friend Karlie\", using synonymous terms (\"dad\" ↔ \"father\", \"mom\" ↔ \"mother\") and omitting the redundant modifier \"her friend\" before \"Karlie\" without contradiction or loss of key referents; all three individuals are unambiguously included and correctly identified as deceased.\n\n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "Deborah’s dad, mom, friend Karlie, and a friend who wrote her the quote “Let go of what no longer serves you.”",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "75ec9e5ad90a8bfa",
+     "prompt_tokens": 5432,
+     "completion_tokens": 29,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three entities from the gold answer (mother → mom, father → dad, friend Karlie) and adds an extra person (\"a friend who wrote her the quote\"), which is not present in the gold; since the gold lists distinct facts and the generated answer adds a fourth distinct person (not a mere elaboration or splitting of an existing item), this violates the \"Lists of DISTINCT facts\" rule requiring coverage of *all* and *only* the gold items.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three entities from the gold answer (mother → mom, father → dad, friend Karlie), and while it adds an extra friend with a quote, that addition does not contradict the gold and is not a distinct factual claim about who has passed away — rather, it appears to be elaborating on or identifying Karlie (the quote is plausibly attributed to Karlie, making it a non-distinct, non-contradictory elaboration). Since the gold lists three distinct people and the generated answer covers all three (with synonymous terms) and adds only clarifying/attributive detail about one of them, it satisfies inclusion + non-contradiction.\n\n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three entities from the gold answer (mother → mom, father → dad, friend Karlie) and adds an extra person (\"a friend who wrote her the quote\"), which violates the rule that extra non-contradictory items generally count as WRONG for lists of distinct facts — and this addition is not a mere elaboration or splitting of an existing gold element but a new distinct fact.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 1,
+     "majority": "WRONG",
+     "unanimous": false
+    },
+    "old_repeat": {
+     "answer": "Deborah’s dad, mom, and Karlie have passed away.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "3f94cba5d5ca43b6",
+     "prompt_tokens": 5436,
+     "completion_tokens": 14,
+     "judges": [
+      {
+       "run": 1,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three individuals from the gold answer—“mother” and “father” are accurately paraphrased as “mom” and “dad”, and “her friend Karlie” is correctly rendered as “Karlie”, with no contradiction or omission.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three individuals from the gold answer—“mother” and “father” are paraphrased as “mom” and “dad”, which are common, non-contradictory synonyms, and “her friend Karlie” is accurately rendered as “Karlie”—with no omissions, contradictions, or extraneous additions.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all three individuals from the gold answer—“mother” and “father” are paraphrased as “mom” and “dad” (common, non-contradictory synonyms), and “her friend Karlie” is accurately rendered as “Karlie”—with no omissions, contradictions, or extraneous additions.  \n```json\n{\n    \"label\": \"CORRECT\"\n}\n```"
+      }
+     ],
+     "correct_votes": 3,
+     "majority": "CORRECT",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 8,
+   "qi": 77,
+   "question": "How does Evan spend his time with his bride after the wedding?",
+   "gold_answer": "family get-together, honeymoon in Canada to see snowy landscapes, ski, taste local cuisine and do some snowshoeing",
+   "arms": {
+    "old": {
+     "answer": "Evan spends time with his bride skiing, trying local cuisine, enjoying beautiful views, and planning a family get-together.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b7e4712b372564e0",
+     "prompt_tokens": 6195,
+     "completion_tokens": 25,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key activities from the gold (skiing, local cuisine, family get-together) and adds “enjoying beautiful views” (a harmless elaboration of “snowy landscapes”) and “planning” (a reasonable interpretation of preparing for the get-together), without contradicting or omitting any required elements; “honeymoon in Canada” and “snowshoeing” are not explicitly stated but “skiing”, “local cuisine”, and “snowy landscapes” strongly imply the Canadian winter honeymoon context, and snowshoeing is a minor activity that can be reasonably subsumed under the broader snowy-landscape experience — however, per strict inclusion rule for lists of distinct facts, *all* listed gold elements must appear or be clearly paraphrased. Since “snowshoeing” is a distinct activity not mentioned or implied in the generated answer, and “honeymoon in Canada” is only indirectly implied (not explicitly stated), the generated answer fails to fully cover the gold’s distinct list. Thus, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key elements from the gold: \"skiing\" (matches \"ski\"), \"trying local cuisine\" (matches \"taste local cuisine\"), \"family get-together\" (present, though phrased as \"planning\" rather than \"having\", but \"planning a family get-together\" implies intent to hold one and does not contradict the gold; \"enjoying beautiful views\" reasonably paraphrases \"see snowy landscapes\"; and while \"snowshoeing\" is omitted, the gold lists activities with \"and\", and for preference/benefit-style questions (here, about how he spends time — a descriptive, experiential list), the instruction states that *only one* of multiple listed aspects needs to be included without contradiction — however, this is not a preference question but a factual enumeration of activities. Re-evaluating: the gold lists five distinct activities: (1) family get-together, (2) honeymoon in Canada to see snowy landscapes, (3) ski, (4) taste local cuisine, (5) snowshoeing. The generated answer includes: skiing, trying local cuisine, enjoying beautiful views (≈ seeing snowy landscapes), and planning a family get-together — but omits snowshoeing. Since this is a list of *distinct facts*, and snowshoeing is a unique, non-redundant activity not covered or elaborated upon (e.g., no mention of snow-based walking/exploration), its omission means not all gold elements are covered → WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "CORRECT",
+       "finish_reason": "stop",
+       "response": "The generated answer includes all key activities from the gold (skiing, local cuisine, family get-together) and adds “enjoying beautiful views” (a harmless paraphrase of “see snowy landscapes”) and “planning” (a reasonable elaboration of the get-together, not contradicting it); no element is omitted or contradicted, and no extraneous *distinct* fact is introduced — “enjoying beautiful views” is not a separate distinct fact but a natural interpretation of snowy landscapes, and “planning” is subsumed under the family get-together context.  \n```json\n{\"label\": \"CORRECT\"}\n```"
+      }
+     ],
+     "correct_votes": 1,
+     "majority": "WRONG",
+     "unanimous": false
+    },
+    "new": {
+     "answer": "Evan spends his time with his bride skiing, trying local cuisine, enjoying beautiful views, and planning a honeymoon in Canada.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "67d4d7b79dde243b",
+     "prompt_tokens": 6193,
+     "completion_tokens": 25,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits \"family get-together\" and \"snowshoeing\", misrepresents the honeymoon as future planning rather than an actual activity (\"planning a honeymoon in Canada\" vs. \"honeymoon in Canada to see snowy landscapes\"), and adds \"enjoying beautiful views\" (a vague, non-contradictory addition) but fails to include all distinct facts from the gold — especially the critical factual error that the honeymoon is described as planned rather than completed/occurring, contradicting the gold's implication of post-wedding activities. Since the gold lists multiple distinct post-wedding activities and the generated answer both misses key elements and contradicts the timing/status of the honeymoon, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits \"family get-together\" and \"snowshoeing\", adds \"enjoying beautiful views\" (not in gold), and misrepresents \"honeymoon in Canada to see snowy landscapes\" as \"planning a honeymoon in Canada\" — which is a future intention, not the actual post-wedding activity described in the gold; this contradicts the gold’s factual claim about what he *does* after the wedding.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits \"family get-together\" and \"snowshoeing\", adds \"enjoying beautiful views\" (not in gold), and incorrectly states they are \"planning a honeymoon in Canada\" instead of having already gone on it — contradicting the gold's past-tense, completed activities (\"honeymoon in Canada to see snowy landscapes, ski, taste local cuisine and do some snowshoeing\"). Since the gold lists distinct past activities and the generated answer misrepresents the honeymoon as future/planned and drops two key elements, it fails inclusion and introduces contradiction.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "Evan spends time with his bride skiing, trying local cuisine, enjoying beautiful views, and planning a honeymoon in Canada.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "b7e4712b372564e0",
+     "prompt_tokens": 6195,
+     "completion_tokens": 24,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions skiing, trying local cuisine, and a honeymoon in Canada (matching three elements), but omits \"family get-together\" and \"snowshoeing\", and incorrectly states they are \"planning\" the honeymoon rather than having already gone on it (contradicting the gold's past-tense activity description); additionally, \"enjoying beautiful views\" is vague and not equivalent to \"see snowy landscapes\". Since the gold lists distinct past activities and the generated answer both omits required elements and misrepresents the honeymoon as future planning, it fails inclusion and introduces contradiction.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits \"family get-together\" and \"snowshoeing\", and incorrectly states they are *planning* a honeymoon in Canada rather than *going on* it (contradicting the gold’s factual claim that the honeymoon occurs), while also adding \"enjoying beautiful views\" and \"planning\" — but crucially, the honeymoon is misrepresented as future intent rather than an actual activity, violating non-contradiction.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer omits \"family get-together\" and \"snowshoeing\", and incorrectly states they are *planning* a honeymoon in Canada rather than *having* it (contradicting the gold’s past-tense, completed activity), while also adding \"enjoying beautiful views\" (not in gold) and dropping \"snowy landscapes\" — but crucially, the honeymoon is misrepresented as future/planned, not actual, which contradicts the gold’s factual claim about post-wedding time spent.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  },
+  {
+   "conv": 9,
+   "qi": 60,
+   "question": "What gifts has Calvin received from his artist friends?",
+   "gold_answer": "gold chain, custom-made guitar with an octopus on it",
+   "arms": {
+    "old": {
+     "answer": "A custom-made guitar with an octopus design from his Japanese artist friend.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "656e652190b90142",
+     "prompt_tokens": 6054,
+     "completion_tokens": 15,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (the custom-made guitar with an octopus), but omits the \"gold chain\"; since the question asks for *gifts* (plural) and the gold lists two distinct items, the generated answer fails to cover all required elements — extra details (e.g., \"Japanese artist friend\") do not compensate for the missing gift, and no exception applies here as this is not a preference/benefit question.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (the custom-made guitar with an octopus), and while it adds a detail (\"Japanese artist friend\") not in the gold, that detail does not contradict the gold and is non-contradictory; however, it omits the \"gold chain\", and since the gold lists two distinct gifts joined by \", \", the generated answer must cover *all* of them — and it does not. Therefore, it is WRONG.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (the custom-made guitar with an octopus), and while it adds a detail (\"from his Japanese artist friend\") not in the gold, that detail is non-contradictory and does not negate or misrepresent the gold’s content; however, it omits the \"gold chain\", and since the gold lists two distinct gifts joined by \", \", the generated answer must cover *all* of them — and it does not. Therefore, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "new": {
+     "answer": "A custom guitar with an octopus design from his Japanese artist friend, and a necklace with a diamond pendant.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "240764fbaf8071dd",
+     "prompt_tokens": 6116,
+     "completion_tokens": 22,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions a \"custom guitar with an octopus design\" (matching \"custom-made guitar with an octopus on it\") but replaces \"gold chain\" with \"a necklace with a diamond pendant\", which is not equivalent — a diamond pendant necklace is not a gold chain (different material, design, and specificity), and no justification or equivalence is provided; this contradicts and omits the gold’s key content.  \n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions a \"custom guitar with an octopus design\" (matching \"custom-made guitar with an octopus on it\") but replaces \"gold chain\" with \"a necklace with a diamond pendant\", which is not equivalent and contradicts the gold (a diamond pendant is not a gold chain; material and description differ significantly). Since the gold lists two specific, distinct gifts and the generated answer substitutes one with a non-equivalent item, it fails the inclusion + non-contradiction principle.\n\n```json\n{\n    \"label\": \"WRONG\"\n}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer mentions a \"custom guitar with an octopus design\" (matching \"custom-made guitar with an octopus on it\") but replaces \"gold chain\" with \"a necklace with a diamond pendant\", which is not equivalent — a diamond pendant necklace is not a gold chain (different material, design, and specificity), and no justification or equivalence is provided; thus, it contradicts or omits the gold’s first item.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    },
+    "old_repeat": {
+     "answer": "A custom-made guitar with an octopus design from his Japanese artist friend.",
+     "finish_reason": "stop",
+     "answer_prompt_sha": "656e652190b90142",
+     "prompt_tokens": 6054,
+     "completion_tokens": 15,
+     "judges": [
+      {
+       "run": 1,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (the custom-made guitar with an octopus), and while it adds a detail (\"from his Japanese artist friend\") not in the gold, that detail is non-contradictory and does not negate or misrepresent the gold’s content; however, the gold lists *two distinct gifts* (\"gold chain, custom-made guitar...\"), and the generated answer omits the \"gold chain\" entirely — since this is a list of distinct facts, *all* must be covered, and omission makes it incomplete. Therefore, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 2,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (custom-made guitar with an octopus) and adds non-contradictory detail (specifying \"design\" and \"Japanese artist friend\"), but omits the \"gold chain\"; since the question asks for plural gifts (\"has Calvin received\") and the gold lists two distinct items, the generated answer fails to cover all required elements.  \n```json\n{\"label\": \"WRONG\"}\n```"
+      },
+      {
+       "run": 3,
+       "label": "WRONG",
+       "finish_reason": "stop",
+       "response": "The generated answer includes one of the two gifts from the gold answer (the custom-made guitar with an octopus), and while it adds a detail (\"from his Japanese artist friend\") not in the gold, that detail is non-contradictory and does not negate or misrepresent the gold’s content; however, the gold lists *two distinct gifts* (\"gold chain, custom-made guitar...\"), and the generated answer omits the \"gold chain\" entirely — since this is a list of distinct facts, *all* must be covered, and omission makes it incomplete. Therefore, it is WRONG.\n\n```json\n{\"label\": \"WRONG\"}\n```"
+      }
+     ],
+     "correct_votes": 0,
+     "majority": "WRONG",
+     "unanimous": true
+    }
+   }
+  }
+ ]
+}
