@@ -93,6 +93,13 @@ def arm_record(trace: dict, items: list[dict], seq_to_dia: dict[int, str], gold:
     return rec
 
 
+ARMS = {"rerank": (("off", False), ("on", True)), "fusion": (("old", True), ("new", True))}
+# 47e590a 之前的融合规则：实体路一律按时间倒序，实体 / 字面分量是现在的两倍
+FUSION_NEW = (S._WEIGHTS, S._ENTITY_KEEPS_RECENCY)
+FUSION_OLD = ({k: {n: (v * 2 if n in ("entity", "literal") else v) for n, v in w.items()} for k, w in S._WEIGHTS.items()},
+              tuple(S._WEIGHTS))
+
+
 async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="/srv/aml/data/locomo10.json")
@@ -102,6 +109,8 @@ async def main() -> None:
     ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--top-k", type=int, default=100)
     ap.add_argument("--max-cost", type=float, default=5.0, help="本次运行重排 + 查询向量的累计花费上限（元）")
+    ap.add_argument("--pair", choices=("rerank", "fusion"), default="rerank",
+                    help="rerank：重排关 / 开（9-30 的实验）。fusion：两臂都开重排，比旧融合规则（实体路按时间倒序、原分量）和新规则（47e590a）")
     args = ap.parse_args()
 
     data = json.load(open(args.data, encoding="utf-8"))
@@ -157,8 +166,12 @@ async def main() -> None:
                 checked_text = True
             rec = {k: q[k] for k in ("conv", "qi", "question", "answer", "raw_evidence", "gold", "bad_evidence", "unmapped_gold")}
             rec["n"] = n
-            for arm, enabled in (("off", False), ("on", True)):
-                config.RERANK_ENABLED = enabled
+            for arm, enabled in ARMS[args.pair]:
+                if args.pair == "fusion":
+                    config.RERANK_ENABLED = True
+                    S._WEIGHTS, S._ENTITY_KEEPS_RECENCY = FUSION_OLD if arm == "old" else FUSION_NEW
+                else:
+                    config.RERANK_ENABLED = enabled
                 trace: dict = {}
                 t0 = time.monotonic()
                 items = await S.search(user_id, q["question"], None, args.top_k, trace=trace)
@@ -169,16 +182,17 @@ async def main() -> None:
             rec["cum_cost_yuan"] = round(cost, 4)
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             f.flush()
+            a0, a1 = (a for a, _ in ARMS[args.pair])
             print(f"[{n}/{total}] conv{q['conv']} q{q['qi']} gold={len(q['gold'])} "
-                  f"off all@10/100={rec['off']['all@10']}/{rec['off']['all@100']} "
-                  f"on={rec['on']['all@10']}/{rec['on']['all@100']} rerank={rec['on']['rerank_status']} "
+                  f"{a0} all@10/100={rec[a0]['all@10']}/{rec[a0]['all@100']} "
+                  f"{a1}={rec[a1]['all@10']}/{rec[a1]['all@100']} rerank={rec[a1]['rerank_status']} "
                   f"cum_tokens={u['rerank']['tokens']} cost=¥{cost:.3f}", flush=True)
             if cost > args.max_cost:
                 stopped = f"cost cap ¥{args.max_cost} reached after question {n}"
                 print("STOP:", stopped, flush=True)
                 break
     u = usage.snapshot()
-    summary = {"questions_in_category": total, "offset": args.offset, "ran": len(todo), "stopped": stopped,
+    summary = {"questions_in_category": total, "offset": args.offset, "ran": len(todo), "stopped": stopped, "pair": args.pair,
                "usage": u, "cost_yuan": round(u["rerank"]["tokens"] * RERANK_YUAN_PER_TOKEN + u["embed"]["tokens"] * EMBED_YUAN_PER_TOKEN, 4),
                "config": {"RERANK_MODEL": config.RERANK_MODEL, "RERANK_TOPN": config.RERANK_TOPN, "RERANK_MIX": config.RERANK_MIX,
                           "RERANK_DOC_CHARS": config.RERANK_DOC_CHARS, "BUDGET_TOKENS": config.BUDGET_TOKENS,
