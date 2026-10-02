@@ -86,16 +86,18 @@ async def main() -> None:
     ap.add_argument("--top-k", type=int, default=100)
     ap.add_argument("--max-cost", type=float, default=7.0, help="重排 + 查询向量累计花费上限（元）；老代码量不到花费，只靠 --max-questions")
     ap.add_argument("--max-questions", type=int, default=200, help="硬上限：最多跑这么多题，和花费无关")
-    ap.add_argument("--require-db", default="aml2", help="DATABASE_URL 里的库名必须是这个，否则不跑")
     args = ap.parse_args()
+    if args.max_questions < 1 or args.limit < 1:
+        raise SystemExit("--limit and --max-questions must be >= 1")
+    REQUIRED_DB = "aml2"   # 实验库，写死；评测库 aml 不准碰
 
     # 运行条件：不满足就不跑（Codex 审查第 4 条）
     db_name = config.DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
     problems = []
     if not config.RERANK_ENABLED:
         problems.append("RERANK_ENABLED is off")
-    if db_name != args.require_db:
-        problems.append(f"database is {db_name!r}, expected {args.require_db!r}")
+    if db_name != REQUIRED_DB:
+        problems.append(f"database is {db_name!r}, expected {REQUIRED_DB!r}")
     if args.top_k != 100:
         problems.append(f"top_k is {args.top_k}, expected 100")
     if problems:
@@ -136,7 +138,8 @@ async def main() -> None:
             try:
                 items = await S.search(user_id, q["question"], None, args.top_k)
             except Exception as e:  # noqa: BLE001
-                f.write(json.dumps({"n": n, "qid": q["question_id"], "error": f"{type(e).__name__}: {e}"}, ensure_ascii=False) + "\n")
+                f.write(json.dumps({"n": n, "qid": q["question_id"], "error": f"{type(e).__name__}: {e}",
+                                    "usage_delta": delta(before, usage_snapshot())}, ensure_ascii=False) + "\n")
                 f.flush()
                 print(f"[{n}] {q['question_id']} ERROR {type(e).__name__}: {e}", flush=True)
                 continue

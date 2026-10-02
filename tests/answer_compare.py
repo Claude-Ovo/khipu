@@ -91,10 +91,12 @@ class Caller:
                 res = {"raw_text": r.text[:2000], "json_error": f"{type(e).__name__}: {e}"}
             rec["response"] = res
             u = res.get("usage") or {}
-            if u.get("prompt_tokens") is not None:
-                charged_in, charged_out = u.get("prompt_tokens", 0) or 0, u.get("completion_tokens", 0) or 0
-            else:   # 没有 usage（出错或供应商没返回）：按保守估计计费，不漏算
-                charged_in, charged_out = int(len(prompt) / EST_CHARS_PER_TOKEN), EST_OUT_TOKENS
+            est_in, est_out = int(len(prompt) / EST_CHARS_PER_TOKEN), EST_OUT_TOKENS
+            if u.get("prompt_tokens") is not None and u.get("completion_tokens") is not None:
+                charged_in, charged_out = u["prompt_tokens"] or 0, u["completion_tokens"] or 0
+            else:   # usage 缺失或不全（出错或供应商没返回）：按保守估计计费，不漏算
+                charged_in = max(u.get("prompt_tokens") or 0, est_in)
+                charged_out = max(u.get("completion_tokens") or 0, est_out)
                 self.usage_missing += 1
                 rec["usage_estimated"] = True
             if r.status_code != 200 or not res.get("choices"):
@@ -102,13 +104,16 @@ class Caller:
             rec["usage"] = u
             rec["finish_reason"] = res["choices"][0].get("finish_reason")
             rec["text"] = ((res["choices"][0].get("message") or {}).get("content") or "").strip()
+            if not rec["text"]:
+                raise RuntimeError("empty answer text in a 200 response")
             rec["ok"] = True
         except Exception as e:  # noqa: BLE001
             rec["ok"] = False
             rec["error"] = f"{type(e).__name__}: {e}"
             self.errors += 1
-            if not charged_in:   # 连 usage 都没拿到的失败也按保守估计计费
-                charged_in, charged_out = int(len(prompt) / EST_CHARS_PER_TOKEN), EST_OUT_TOKENS
+            # 失败的调用一律按 max(上报, 保守估计) 计费，只报了 1 个 prompt token 也不会少算
+            charged_in = max(charged_in, int(len(prompt) / EST_CHARS_PER_TOKEN))
+            charged_out = max(charged_out, EST_OUT_TOKENS)
         self.cost += charged_in * PRICE_IN + charged_out * PRICE_OUT
         rec["latency_s"] = round(time.monotonic() - t0, 3)
         rec["cum_cost_yuan"] = round(self.cost, 4)
@@ -118,13 +123,14 @@ class Caller:
 
 
 def load_arm(path: str) -> tuple[dict[str, dict], list[dict]]:
-    rows, errors = {}, []
+    rows, errors, seen = {}, [], set()
     for l in open(path, encoding="utf-8"):
         o = json.loads(l)
+        if o["qid"] in seen:
+            raise SystemExit(f"duplicate qid {o['qid']} in {path} (success and/or error rows)")
+        seen.add(o["qid"])
         if "error" in o:
             errors.append(o); continue
-        if o["qid"] in rows:
-            raise SystemExit(f"duplicate qid {o['qid']} in {path}")
         rows[o["qid"]] = o
     return rows, errors
 
@@ -145,6 +151,8 @@ def main() -> None:
     ap.add_argument("--allow-missing", action="store_true", help="某臂检索出错的题跳过并记录（默认：有缺题就拒绝开跑）")
     args = ap.parse_args()
     assert API_KEY, "DASHSCOPE_API_KEY missing"
+    if args.judge_runs < 3 or args.judge_runs % 2 == 0:
+        raise SystemExit("--judge-runs must be an odd number >= 3 (majority needs a real majority)")
 
     ds = DATASETS[args.dataset]
     sys.path.insert(0, ds["pipeline"]); sys.path.insert(0, AML_REPO_DIR)
@@ -156,16 +164,22 @@ def main() -> None:
     missing: list[dict] = []
     for spec in args.arm:
         name, path = spec.split("=", 1)
+        if name in arms or name.endswith("_repeat"):
+            raise SystemExit(f"arm name {name!r} duplicated or reserved (names ending in _repeat are reserved)")
         arms[name], errs = load_arm(path)
         arm_files[name] = path
         missing += [{"arm": name, **e} for e in errs]
     names = list(arms)
+    if args.repeat and args.repeat not in arms:
+        raise SystemExit(f"--repeat {args.repeat!r} is not one of the arms {names}")
     qids = list(arms[names[0]])
+    dropped: list[dict] = []
     for name in names[1:]:
         if list(arms[name]) != qids:
             diff = sorted(set(qids) ^ set(arms[name]))
             if not args.allow_missing:
                 raise SystemExit(f"question sets differ between {names[0]} and {name}: {diff[:10]} (use --allow-missing to drop them, they will be listed)")
+            dropped += [{"qid": q, "missing_in": name} for q in diff]
             qids = [q for q in qids if q in arms[name]]
     for q in qids:
         base = arms[names[0]][q]
@@ -178,18 +192,24 @@ def main() -> None:
     if args.only:
         want = set(args.only.split(",")); qids = [q for q in qids if q in want]
     plan = names + ([f"{args.repeat}_repeat"] if args.repeat else [])
+    source_of = {n: n for n in names}
+    if args.repeat:
+        source_of[f"{args.repeat}_repeat"] = args.repeat
     sa, sb = ds["speakers"] or tuple(args.speakers.split(","))
 
     run_sig = sha(json.dumps({"dataset": args.dataset, "answer_model": args.answer_model, "judge_model": args.judge_model, "seed": args.seed,
                               "judge_runs": args.judge_runs, "answer_t": sha(OPEN_ENDED_ANSWER_TEMPLATE), "judge_t": sha(ACCURACY_PROMPT),
-                              "arms": {n: file_sha(p) for n, p in arm_files.items()}, "speakers": [sa, sb]}, sort_keys=True))
+                              "arms": {n: file_sha(p) for n, p in arm_files.items()}, "speakers": [sa, sb],
+                              "only": sorted(args.only.split(",")) if args.only else [], "repeat": args.repeat, "allow_missing": args.allow_missing},
+                             sort_keys=True))
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
     config = {"run_sig": run_sig, "dataset": args.dataset, "arms": arm_files, "arm_file_sha256_16": {n: file_sha(p) for n, p in arm_files.items()},
               "repeat": args.repeat, "plan": plan, "answer_model": args.answer_model, "judge_model": args.judge_model, "temperature": 0,
               "seed": args.seed, "judge_seeds": [args.seed + i for i in range(args.judge_runs)], "enable_thinking": False,
               "max_tokens": "not set (official pipeline)", "answer_template_sha256_16": sha(OPEN_ENDED_ANSWER_TEMPLATE),
               "judge_template_sha256_16": sha(ACCURACY_PROMPT), "pipeline_dir": ds["pipeline"], "speakers": [sa, sb],
-              "questions": len(qids), "excluded_for_retrieval_error": missing, "price_assumption_yuan_per_M": {"in": 0.8, "out": 2.0},
+              "questions": len(qids), "excluded_for_retrieval_error": missing, "dropped_missing_in_some_arm": dropped,
+              "price_assumption_yuan_per_M": {"in": 0.8, "out": 2.0},
               "question_date": "present in the LME data but not a field of the official answer template; not supplied",
               "started": time.strftime("%Y-%m-%d %H:%M:%S %z")}
     cfg_path = out / "config.json"
@@ -243,10 +263,12 @@ def main() -> None:
     try:
         for qid in qids:
             for arm in plan:
-                src = arms[arm.removesuffix("_repeat")][qid]
+                src = arms[source_of[arm]][qid]
                 rec = have.get((qid, arm))
                 if rec and rec.get("complete"):
                     continue
+                if rec is not None and not rec.get("answer_ok"):
+                    rec = None   # 上次答题失败的，重答
                 if rec is None:
                     lines = [r["content"] for r in src["returned"] if (r.get("content") or "").strip()]
                     blank = sum(1 for r in src["returned"] if not (r.get("content") or "").strip())
