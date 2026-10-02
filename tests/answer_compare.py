@@ -174,13 +174,19 @@ def main() -> None:
         raise SystemExit(f"--repeat {args.repeat!r} is not one of the arms {names}")
     qids = list(arms[names[0]])
     dropped: list[dict] = []
+    all_qids = sorted(set().union(*(set(a) for a in arms.values())))
+    for q in all_qids:   # 逐题看缺在哪些臂，归属不会错
+        lacking = [n for n in names if q not in arms[n]]
+        if lacking:
+            dropped.append({"qid": q, "missing_in": lacking})
+    if dropped and not args.allow_missing:
+        raise SystemExit(f"question sets differ across arms: {dropped[:10]} (use --allow-missing to drop them, they will be listed)")
     for name in names[1:]:
         if list(arms[name]) != qids:
-            diff = sorted(set(qids) ^ set(arms[name]))
-            if not args.allow_missing:
-                raise SystemExit(f"question sets differ between {names[0]} and {name}: {diff[:10]} (use --allow-missing to drop them, they will be listed)")
-            dropped += [{"qid": q, "missing_in": name} for q in diff]
-            qids = [q for q in qids if q in arms[name]]
+            common = [q for q in qids if q in arms[name]]
+            if list(q for q in arms[name] if q in set(common)) != common and not args.allow_missing:
+                raise SystemExit(f"question order differs between {names[0]} and {name}")
+            qids = common
     for q in qids:
         base = arms[names[0]][q]
         for name in names[1:]:
