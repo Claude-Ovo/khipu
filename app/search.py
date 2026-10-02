@@ -27,18 +27,21 @@ _INTENT = [
     ("who", re.compile(r"\b(who|whose|whom)\b|谁", re.I)),
 ]
 
-# 各路在 RRF 里的分量；只有这五路能开门
-# 2026-10-01 实体、字面两路的分量减半（tests/analyze_channels.py 在 LoCoMo 1982 题 + LME 200 题的离线重算上比出来的：
-# 这两路每题几百条、和 bm25/向量大量重叠，原分量等于把同一条证据的分数记两遍，把别的证据挤出重排窗口）
-_WEIGHTS = {
-    "default":   {"bm25": 1.0, "vector": 1.0, "entity": 0.4, "literal": 0.5, "date": 0.5},
-    "temporal":  {"bm25": 1.2, "vector": 0.9, "entity": 0.35, "literal": 0.5, "date": 1.5},
-    "latest":    {"bm25": 1.0, "vector": 1.0, "entity": 0.5, "literal": 0.4, "date": 0.3},
-    "aggregate": {"bm25": 1.0, "vector": 1.0, "entity": 0.7, "literal": 0.5, "date": 0.5},
-    "who":       {"bm25": 1.0, "vector": 1.0, "entity": 0.7, "literal": 0.6, "date": 0.3},
+# 各路在 RRF 里的分量；只有这五路能开门。两套：legacy 是第一次 Full（v0.3.1）的分量；candidate 把实体、字面两路减半
+# （10-01 诊断：这两路每题几百条、和 bm25/向量大量重叠，原分量等于把同一条证据的分数记两遍，把别的证据挤出重排窗口）。
+# 选哪套由 config.FUSION_RULE 定，默认 legacy。
+_WEIGHTS_LEGACY = {
+    "default":   {"bm25": 1.0, "vector": 1.0, "entity": 0.8, "literal": 1.0, "date": 0.5},
+    "temporal":  {"bm25": 1.2, "vector": 0.9, "entity": 0.7, "literal": 1.0, "date": 1.5},
+    "latest":    {"bm25": 1.0, "vector": 1.0, "entity": 1.0, "literal": 0.8, "date": 0.3},
+    "aggregate": {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.0, "date": 0.5},
+    "who":       {"bm25": 1.0, "vector": 1.0, "entity": 1.4, "literal": 1.2, "date": 0.3},
 }
-# 实体路默认按时间倒序（最近提到这个人的段在前）。除了问「最近」和问时间的题，都改成按相关度排：见 _entity_by_relevance
-_ENTITY_KEEPS_RECENCY = ("latest", "temporal")
+_WEIGHTS_CANDIDATE = {k: {n: (v / 2 if n in ("entity", "literal") else v) for n, v in w.items()} for k, w in _WEIGHTS_LEGACY.items()}
+_WEIGHTS = _WEIGHTS_CANDIDATE if config.FUSION_RULE == "candidate" else _WEIGHTS_LEGACY
+# 实体路默认按时间倒序（最近提到这个人的段在前）。candidate 规则下，除了问「最近」和问时间的题，改成按相关度排（_entity_by_relevance）；
+# legacy 规则下所有意图都保持时间倒序。
+_ENTITY_KEEPS_RECENCY = ("latest", "temporal") if config.FUSION_RULE == "candidate" else tuple(_WEIGHTS_LEGACY)
 _VIRTUAL_RANK = 4  # 实体/字面/日期通道的起始虚拟排名（MemoryConstellations 的做法）
 for _w in _WEIGHTS.values():   # 第二跳两路的分量，只有 HOP_ENABLED 时才会出现在通道表里
     _w.setdefault("bm25_hop", config.HOP_W)

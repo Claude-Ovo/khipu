@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import config  # noqa: E402
-from app.search import _VIRTUAL_RANK, _WEIGHTS  # noqa: E402
+from app.search import _VIRTUAL_RANK, _WEIGHTS_LEGACY as _WEIGHTS  # noqa: E402
 
 
 def rrf(ch: dict[str, list[int]], w: dict[str, float], both_first: bool = True) -> list[int]:

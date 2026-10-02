@@ -55,6 +55,11 @@ SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
 
 # 检索
 RRF_K = _int("RRF_K", 60)
+# 融合规则开关（2026-10-02）。默认 legacy = 第一次 Full 的规则（实体路按时间倒序、v0.3.1 分量）；
+# candidate = 10-01 诊断里的候选（实体路除 temporal/latest 外按相关度排、实体+字面分量减半，collab/诊断-事实与多跳-20260930/fusion-sim/REPORT.md）。
+# 候选只在实验里开，没有采用；这个开关让同一份代码两种规则都能跑、都能对照。
+FUSION_RULE = os.environ.get("FUSION_RULE", "legacy")
+assert FUSION_RULE in ("legacy", "candidate"), f"FUSION_RULE must be legacy or candidate, got {FUSION_RULE!r}"
 CHANNEL_TOPN_MULT = _int("CHANNEL_TOPN_MULT", 2)   # 每路取 top_k * 2
 # 9-26 LoCoMo 消融：邻居 20% + 规矩口袋常开，any@100 0.779 → 关掉 0.809。邻居改小，规矩只在「要你做事」的题上开
 NEIGHBOR_CAP_RATIO = _float("NEIGHBOR_CAP_RATIO", 0.05)

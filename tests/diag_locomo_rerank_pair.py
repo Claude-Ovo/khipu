@@ -94,10 +94,9 @@ def arm_record(trace: dict, items: list[dict], seq_to_dia: dict[int, str], gold:
 
 
 ARMS = {"rerank": (("off", False), ("on", True)), "fusion": (("old", True), ("new", True))}
-# 47e590a 之前的融合规则：实体路一律按时间倒序，实体 / 字面分量是现在的两倍
-FUSION_NEW = (S._WEIGHTS, S._ENTITY_KEEPS_RECENCY)
-FUSION_OLD = ({k: {n: (v * 2 if n in ("entity", "literal") else v) for n, v in w.items()} for k, w in S._WEIGHTS.items()},
-              tuple(S._WEIGHTS))
+# old = legacy 规则（第一次 Full），new = candidate 规则；和 config.FUSION_RULE 无关，两臂在这里显式指定
+FUSION_OLD = (S._WEIGHTS_LEGACY, tuple(S._WEIGHTS_LEGACY))
+FUSION_NEW = (S._WEIGHTS_CANDIDATE, ("latest", "temporal"))
 
 
 async def main() -> None:
@@ -110,7 +109,7 @@ async def main() -> None:
     ap.add_argument("--top-k", type=int, default=100)
     ap.add_argument("--max-cost", type=float, default=5.0, help="本次运行重排 + 查询向量的累计花费上限（元）")
     ap.add_argument("--pair", choices=("rerank", "fusion"), default="rerank",
-                    help="rerank：重排关 / 开（9-30 的实验）。fusion：两臂都开重排，比旧融合规则（实体路按时间倒序、原分量）和新规则（47e590a）")
+                    help="rerank：重排关 / 开（9-30 的实验）。fusion：两臂都开重排，比 legacy 规则（第一次 Full）和 candidate 规则（10-01 诊断）")
     args = ap.parse_args()
 
     data = json.load(open(args.data, encoding="utf-8"))
