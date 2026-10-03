@@ -1,0 +1,449 @@
+{
+ "questions": 200,
+ "arms": [
+  "new",
+  "old"
+ ],
+ "correct_total": {
+  "new": 150,
+  "old": 144
+ },
+ "only_old": 6,
+ "only_new": 12,
+ "mcnemar_p": 0.2379,
+ "by_type": {
+  "single-session-user": {
+   "n": 70,
+   "new": 68,
+   "old": 67,
+   "only_old": 0,
+   "only_new": 1,
+   "incomplete": 0
+  },
+  "multi-session": {
+   "n": 100,
+   "new": 63,
+   "old": 61,
+   "only_old": 5,
+   "only_new": 7,
+   "incomplete": 0
+  },
+  "single-session-preference": {
+   "n": 30,
+   "new": 19,
+   "old": 16,
+   "only_old": 1,
+   "only_new": 4,
+   "incomplete": 0
+  }
+ },
+ "retrieval_label": {
+  "new": {
+   "handed": 189,
+   "not_found": 11
+  },
+  "old": {
+   "handed": 189,
+   "not_found": 11
+  }
+ },
+ "answer_label": {
+  "new": {
+   "correct": 150,
+   "wrong": 48,
+   "wrong_with_dissent": 2
+  },
+  "old": {
+   "correct": 144,
+   "wrong": 53,
+   "wrong_with_dissent": 3
+  }
+ },
+ "returned_same_set": 9,
+ "returned_same_order": 0,
+ "gold_hit_changed": [],
+ "header_example": {
+  "old": "[2023-05-31 (Wed) 01:27] user: I graduat",
+  "new": "[2023-05-30 (Tue) 17:27] user: I graduat"
+ },
+ "changed": [
+  {
+   "qid": "19b5f2b3_abs",
+   "type": "single-session-user",
+   "question": "How long was I in Korea for?",
+   "gold": "You did not mention this information. You mentioned staying in Japan, but not in",
+   "old": {
+    "answer": "You did not visit Korea; you are planning a trip to Seoul in July.",
+    "votes": "0/3",
+    "retrieval": "not_found",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "You did not state how long you were in Korea.",
+    "votes": "3/3",
+    "retrieval": "not_found",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "6d550036",
+   "type": "multi-session",
+   "question": "How many projects have I led or am currently leading?",
+   "gold": "2",
+   "old": {
+    "answer": "Three projects: the high-priority project completed two months ahead of schedule, the cloud migration effort, and the ne",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Two projects: the cloud migration effort and the new product feature launch.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "gpt4_15e38248",
+   "type": "multi-session",
+   "question": "How many pieces of furniture did I buy, assemble, sell, or fix in the past few months?",
+   "gold": "4",
+   "old": {
+    "answer": "You bought and assembled an IKEA bookshelf, bought a West Elm coffee table, fixed a wobbly kitchen table leg, and ordere",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "You bought and assembled an IKEA bookshelf, bought and fixed a kitchen table leg, and bought a West Elm coffee table.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "80ec1f4f",
+   "type": "multi-session",
+   "question": "How many different museums or galleries did I visit in the month of February?",
+   "gold": "2",
+   "old": {
+    "answer": "Three: Modern Art Museum, The Art Cube, and Natural History Museum.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Three: Modern Art Museum (January, but user said \"recently got back into art after attending... in January\" — not Februa",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "gpt4_2ba83207",
+   "type": "multi-session",
+   "question": "Which grocery store did I spend the most money at in the past month?",
+   "gold": "Thrive Market",
+   "old": {
+    "answer": "Thrive Market",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "Walmart",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "2788b940",
+   "type": "multi-session",
+   "question": "How many fitness classes do I attend in a typical week?",
+   "gold": "5",
+   "old": {
+    "answer": "Five fitness classes: Zumba on Tuesdays and Thursdays, BodyPump on Mondays, Hip Hop Abs on Saturdays, and yoga on Sunday",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "You attend four fitness classes in a typical week: Zumba on Tuesdays and Thursdays, BodyPump on Mondays, and Hip Hop Abs",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "60bf93ed",
+   "type": "multi-session",
+   "question": "How many days did it take for my laptop backpack to arrive after I bought it?",
+   "gold": "5 days. 6 days (including the last day) is also acceptable.",
+   "old": {
+    "answer": "5 days",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "4 days",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "5a7937c8",
+   "type": "multi-session",
+   "question": "How many days did I spend participating in faith-related activities in December?",
+   "gold": "3 days.",
+   "old": {
+    "answer": "3 days",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "4 days",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "1a8a66a6",
+   "type": "multi-session",
+   "question": "How many magazine subscriptions do I currently have?",
+   "gold": "2",
+   "old": {
+    "answer": "Three: The New Yorker, Architectural Digest, and National Geographic.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "You currently have two magazine subscriptions: The New Yorker and Architectural Digest.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "75832dbd",
+   "type": "single-session-preference",
+   "question": "Can you recommend some recent publications or conferences that I might find interesting?",
+   "gold": "The user would prefer suggestions related to recent research papers, articles, o",
+   "old": {
+    "answer": "NeurIPS, CVPR, ICML, ICLR, ICCV",
+    "votes": "1/3",
+    "retrieval": "handed",
+    "label": "wrong_with_dissent"
+   },
+   "new": {
+    "answer": "NeurIPS, CVPR, ICML, ICLR, ICCV",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "35a27287",
+   "type": "single-session-preference",
+   "question": "Can you recommend some interesting cultural events happening around me this weekend?",
+   "gold": "The user would prefer responses that suggest cultural events where they can prac",
+   "old": {
+    "answer": "I don’t have access to your location or real-time event data, so I can’t recommend specific cultural events happening ne",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Search Eventbrite or Meetup for “language festival,” “cultural exchange,” or “international festival” in your area.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "6b7dfb22",
+   "type": "single-session-preference",
+   "question": "I've been feeling a bit stuck with my paintings lately. Do you have any ideas on how I can",
+   "gold": "The user would prefer responses that build upon their existing sources of inspir",
+   "old": {
+    "answer": "Look at flower paintings on Instagram.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   },
+   "new": {
+    "answer": "Try new seasoning combinations for roasted chickpeas.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "d6233ab6",
+   "type": "single-session-preference",
+   "question": "I've been feeling nostalgic lately. Do you think it would be a good idea to attend my high",
+   "gold": "The user would prefer responses that draw upon their personal experiences and me",
+   "old": {
+    "answer": "Yes, attending your high school reunion could be a good idea.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Yes, attending your high school reunion could be a meaningful way to reconnect with past experiences and people.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "1da05512",
+   "type": "single-session-preference",
+   "question": "I'm trying to decide whether to buy a NAS device now or wait. What do you think?",
+   "gold": "The user would prefer responses that take into account their current home networ",
+   "old": {
+    "answer": "Buy a NAS now if you need expanded storage, central backup, or better security—options like Synology DS218j or QNAP TS-2",
+    "votes": "1/3",
+    "retrieval": "handed",
+    "label": "wrong_with_dissent"
+   },
+   "new": {
+    "answer": "Buy a NAS device now if you need centralized backup, more storage, or enhanced security—options like Synology DS218j or ",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   }
+  },
+  {
+   "qid": "b0479f84",
+   "type": "single-session-preference",
+   "question": "I've got some free time tonight, any documentary recommendations?",
+   "gold": "The user would prefer documentary recommendations that are similar in style and ",
+   "old": {
+    "answer": "\"Chasing Coral\", \"Dynasties\", \"Planet Earth\", \"Blue Planet\", \"March of the Penguins\", \"The Last Lions\", \"The Cave\", \"Exp",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "\"Chasing Coral\" or \"Dynasties\" on Netflix.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "1d4e3b97",
+   "type": "single-session-preference",
+   "question": "I noticed my bike seems to be performing even better during my Sunday group rides. Could t",
+   "gold": "The user would prefer responses that reference specific details from their previ",
+   "old": {
+    "answer": "You replaced the old bike's chain and cassette on February 1st.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "You replaced the old bike's chain and cassette on February 1st.",
+    "votes": "1/3",
+    "retrieval": "handed",
+    "label": "wrong_with_dissent"
+   }
+  },
+  {
+   "qid": "0a34ad58",
+   "type": "single-session-preference",
+   "question": "I’m a bit anxious about getting around Tokyo. Do you have any helpful tips?",
+   "gold": "The user would prefer responses that utilize their existing resources, such as t",
+   "old": {
+    "answer": "Use your Suica card for seamless train and bus travel, and download Google Maps or a transit app for real-time navigatio",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Use your Suica card for seamless train and bus travel.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "a11281a2",
+   "type": "multi-session",
+   "question": "What was the approximate increase in Instagram followers I experienced in two weeks?",
+   "gold": "100",
+   "old": {
+    "answer": "350 followers",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Approximately 100 followers.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "d905b33f",
+   "type": "multi-session",
+   "question": "What percentage discount did I get on the book from my favorite author?",
+   "gold": "20%",
+   "old": {
+    "answer": "The memory does not state the percentage discount on the book from the favorite author.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "20%",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "4adc0475",
+   "type": "multi-session",
+   "question": "What is the total number of goals and assists I have in the recreational indoor soccer lea",
+   "gold": "5",
+   "old": {
+    "answer": "5 goals and 2 assists",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "3 goals and 2 assists",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  },
+  {
+   "qid": "ef66a6e5",
+   "type": "multi-session",
+   "question": "How many sports have I played competitively in the past?",
+   "gold": "two",
+   "old": {
+    "answer": "Three: tennis, soccer, and swimming.",
+    "votes": "0/3",
+    "retrieval": "handed",
+    "label": "wrong"
+   },
+   "new": {
+    "answer": "Two: tennis and swimming.",
+    "votes": "3/3",
+    "retrieval": "handed",
+    "label": "correct"
+   }
+  }
+ ]
+}

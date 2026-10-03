@@ -1,0 +1,58 @@
+{
+ "config": {
+  "run_sig": "2bad0c9a9488d82e",
+  "dataset": "lme",
+  "arms": {
+   "oracle": "/srv/aml/data/a4/contexts-oracle.jsonl"
+  },
+  "arm_file_sha256_16": {
+   "oracle": "2abea7bad97d21db"
+  },
+  "repeat": "",
+  "plan": [
+   "oracle"
+  ],
+  "answer_model": "qwen-plus-2025-12-01",
+  "judge_model": "qwen-plus-2025-12-01",
+  "temperature": 0,
+  "seed": 20261002,
+  "judge_seeds": [
+   20261002,
+   20261003,
+   20261004
+  ],
+  "enable_thinking": false,
+  "max_tokens": "not set (official pipeline)",
+  "answer_template_sha256_16": "4b0b989c9a10f810",
+  "judge_template_sha256_16": "44b751660e4e0950",
+  "pipeline_dir": "/srv/aml/pipelines/longmemeval-s",
+  "speakers": [
+   "user",
+   "assistant"
+  ],
+  "questions": 46,
+  "excluded_for_retrieval_error": [],
+  "dropped_missing_in_some_arm": [],
+  "price_assumption_yuan_per_M": {
+   "in": 0.8,
+   "out": 2.0
+  },
+  "question_date": "present in the LME data but not a field of the official answer template; not supplied",
+  "started": "2026-10-02 22:28:57 +0800"
+ },
+ "summary": {
+  "run_sig": "2bad0c9a9488d82e",
+  "questions": 46,
+  "plan": [
+   "oracle"
+  ],
+  "records": 46,
+  "complete": 46,
+  "calls_this_process": 184,
+  "call_errors": 0,
+  "usage_missing": 0,
+  "cost_yuan_cumulative": 0.1143,
+  "stopped": null,
+  "finished": "2026-10-02 22:34:05 +0800"
+ }
+}
