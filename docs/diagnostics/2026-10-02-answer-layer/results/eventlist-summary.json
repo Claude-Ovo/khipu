@@ -1,0 +1,62 @@
+{
+ "config": {
+  "run_sig": "0df22041288c7b50",
+  "dataset": "lme",
+  "arms": {
+   "base": "/srv/aml/data/a4/eventlist/ctx-base.jsonl",
+   "eventlist": "/srv/aml/data/a4/eventlist/ctx-eventlist.jsonl"
+  },
+  "arm_file_sha256_16": {
+   "base": "aa7339c7e98d0bc6",
+   "eventlist": "3189c581e7787497"
+  },
+  "repeat": "",
+  "plan": [
+   "base",
+   "eventlist"
+  ],
+  "answer_model": "qwen-plus-2025-12-01",
+  "judge_model": "qwen-plus-2025-12-01",
+  "temperature": 0,
+  "seed": 20261002,
+  "judge_seeds": [
+   20261002,
+   20261003,
+   20261004
+  ],
+  "enable_thinking": false,
+  "max_tokens": "not set (official pipeline)",
+  "answer_template_sha256_16": "4b0b989c9a10f810",
+  "judge_template_sha256_16": "44b751660e4e0950",
+  "pipeline_dir": "/srv/aml/pipelines/longmemeval-s",
+  "speakers": [
+   "user",
+   "assistant"
+  ],
+  "questions": 20,
+  "excluded_for_retrieval_error": [],
+  "dropped_missing_in_some_arm": [],
+  "price_assumption_yuan_per_M": {
+   "in": 0.8,
+   "out": 2.0
+  },
+  "question_date": "present in the LME data but not a field of the official answer template; not supplied",
+  "started": "2026-10-04 05:02:38 +0800"
+ },
+ "summary": {
+  "run_sig": "0df22041288c7b50",
+  "questions": 20,
+  "plan": [
+   "base",
+   "eventlist"
+  ],
+  "records": 40,
+  "complete": 40,
+  "calls_this_process": 160,
+  "call_errors": 0,
+  "usage_missing": 0,
+  "cost_yuan_cumulative": 0.577,
+  "stopped": null,
+  "finished": "2026-10-04 05:07:28 +0800"
+ }
+}
