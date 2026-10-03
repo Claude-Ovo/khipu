@@ -1,0 +1,14 @@
+Question: How many fish are there in total in both of my aquariums?
+Question date: 2023/05/30 (Tue) 20:36
+- [2023-05-22] (row 14, row 55, row 57, row 34) user — User's new 20-gallon tank currently has 10 neon tetras, 5 golden honey gouramis, and a small pleco catfish. — quote: "my new 20-gallon tank, which currently has 10 neon tetras, 5 golden honey gouramis, and a small pleco catfish" (done)
+- [2023-05-27] (row 6, row 45, row 19, row 65) user — User has a 10-gallon tank (upgraded) with a betta fish named Bubbles. — quote: "I also upgraded my old 10-gallon tank, which has my betta fish, Bubbles" (done)
+- [2023-05-27] (row 9, row 71) user — User has some gouramis in the 20-gallon tank showing aggression at feeding times. — quote: "I also have some gouramis in my 20-gallon tank" (done; borderline: likely the same 5 golden honey gouramis from row 14, not stated)
+- [2023-05-22] (row 3, row 55, row 7) user — User is thinking of adding schooling fish (lemon tetras or zebra danios) to the 20-gallon tank. — quote: "I'm thinking of getting some schooling fish to add to the 20-gallon tank, like lemon tetras or zebra danios" (plan)
+- [2023-05-27] (row 5, row 47, row 46, row 9, row 19, row 31) user — User is planning to add schooling fish (lemon tetras or zebra danios) to the 20-gallon tank to distract the gouramis; will introduce them in a group. — quote: "I'll consider adding some schooling fish, but I'll make sure to introduce them in a group" (plan)
+- [2023-05-27] (row 31, row 47) assistant — Assistant suggested adding a school of 10-15 lemon tetras or zebra danios. — quote: "Adding a school of 10-15 lemon tetras or zebra danios can help distract your gouramis" (assistant suggestion)
+- [2023-05-22] (row 14, row 2, row 40, row 57, row 25, row 60) user — User is thinking of adding live plants (Java Moss, Anacharis) to the 20-gallon tank. — quote: "I'm thinking of adding some live plants to my new 20-gallon tank" (plan)
+- [2023-05-27] (row 6, row 30, row 16, row 77, row 87) user — User is thinking of adding live aquatic plants to the freshwater tank. — quote: "I'm thinking of adding some live aquatic plants to my freshwater tank" (plan)
+- [2023-05-22] (row 27, row 13, row 32, row 38, row 54, row 29, row 41, row 26, row 4) user — User already has artificial coral and rocks in the 20-gallon tank and plans to add a treasure chest decoration near them. — quote: "I already have some artificial coral and rocks in the tank, but I want to add something more" (plan)
+- [2023-05-27] (row 8, row 43, row 61) user — User is thinking of upgrading tank decorations with new artificial coral and rocks. — quote: "upgrading my tank decorations and adding some new artificial coral and rocks" (plan)
+- [2023-05-27] (row 19, row 65) user — User asked whether Bubbles the betta would eat frozen bloodworms. — quote: "do you think my betta fish Bubbles would be interested in eating frozen bloodworms?" (plan)
+Rows cited: 36

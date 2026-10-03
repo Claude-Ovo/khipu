@@ -94,3 +94,20 @@ Conclusion: the +5/39 ceiling exists but is not reachable with similarity-based 
 - B2: closed as heuristic; merged into B3 as "value extraction with supersede marking", with the measured ceiling (+5/39 on this proxy) and the measured failure of the heuristic route.
 - B3 remains the only item with a measured upside (counting +≤19/200, update +≤5/39 on proxies), and it is the one that needs gpt-4o-mini.
 - Preference questions (11/30 wrong, 7 unfixable with perfect evidence) and "days ago" questions (19/30 wrong) are answer-side on this proxy; nothing scheduled.
+
+## 6. Addendum 2026-10-04: per-question error reading and the event-list experiment
+
+Prompted by a second reading (hers, via GPT) of sections 2–4: "the 19/46 is not a ceiling", "the 27 are not proven unreachable", "state replacement vs event accumulation must be kept apart". All three accepted; section 2's wording "ceiling" is withdrawn. Reasons found while re-reading the raw records: (a) gold-only is one presentation, not the best one; (b) the dataset's `has_answer` flags are incomplete — for 85fa3a3f the $20 flea-collar row is not flagged, so the gold-only arm could not answer it; (c) single runs, and the same-input rerun below flips 3/20.
+
+**Ten counting/sum errors with all gold rows handed, read against the raw prompts, answers and judge reasoning** (`results/a4-*`, `calls.jsonl` on Morrow): omission 3 (yoga in an aside; mattress; lemon at rank 82), arithmetic 1 (fish: list right, sum wrong), category judgement 2 (physical therapy ≠ doctor's appointment; mattress), negation missed 1 (a graduation the user *missed*), assistant suggestion taken as user fact 1 (grapefruit), distractor-session events counted 2 (another persona's benefit concert and sister's wedding — LME-s distractors are other users' chats), double counting 2 (old arm: "$2,000" said twice; cousin's = Rachel's wedding), state/accumulate confusion 1 (two playthroughs of the same game collapsed into one), refusal 1. No judge disagreement found in the ten. The platform's distractor construction is unknown, so the two distractor cases may not exist there.
+
+**Event-list experiment** (¥0.58). 10 of these errors + 10 originally-correct counting questions. Two fresh agents with no access to gold answers or to the analysis above read question + the actual 100 returned rows and wrote one line per event with date, row citation, verbatim quote and a status tag (done / plan / did not happen / assistant suggestion / borderline). Arms: `base` = the A4 context unchanged (also a same-input rerun), `eventlist` = the list prepended and rows numbered. qwen-plus answers, 3 judges.
+
+| group | A4 original | base rerun | event list |
+|---|---|---|---|
+| originally wrong (10) | 0 | 2 | 2 |
+| originally right (10) | 10 | 9 | 9 |
+
+Same-input rerun moved 3/20. The list fixed 2 (graduation: the "did not happen" tag worked; pet cost: the itemized prices summed to $50) and did not fix the other 8 even when the list stated the missing fact outright (yoga on Sundays is listed; the model still answered four; fish still summed to 21; the distractor concert still added). It broke 1 of the correct ones (projects: six listed items, model counted all of them). Lists are in `eventlists/`.
+
+Reading: on this proxy, counting errors are dominated by the answer model's own flakiness and category judgements, not by evidence presentation; a careful human-grade list does not move it. Consequences: (1) no automation of event lists is worth building on this evidence; (2) any future presentation A/B on counting needs ≥3 repeats per arm or it measures noise; (3) the useful remaining question is whether gpt-4o-mini as the answer proxy behaves the same — unknown, not run.
