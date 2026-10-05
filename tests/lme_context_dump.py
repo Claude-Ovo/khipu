@@ -86,10 +86,16 @@ async def main() -> None:
     ap.add_argument("--top-k", type=int, default=100)
     ap.add_argument("--max-cost", type=float, default=7.0, help="重排 + 查询向量累计花费上限（元）；老代码量不到花费，只靠 --max-questions")
     ap.add_argument("--max-questions", type=int, default=200, help="硬上限：最多跑这么多题，和花费无关")
+    # B3 对照（10-06）加的三个：别的实验库、别的用户前缀、按 qid 挑题（不按前 N 题）
+    ap.add_argument("--required-db", default="aml2", help="只在这个库上跑；评测库 aml 永远拒绝")
+    ap.add_argument("--user-prefix", default=f"replay:{LME_TAG}:lme:", help="user_id = 前缀 + question_id")
+    ap.add_argument("--qids", default="", help="qid 列表文件（一行一个）；给了就只跑这些题（按数据集顺序），忽略 --limit/--offset")
     args = ap.parse_args()
     if args.max_questions < 1 or args.limit < 1:
         raise SystemExit("--limit and --max-questions must be >= 1")
-    REQUIRED_DB = "aml2"   # 实验库，写死；评测库 aml 不准碰
+    REQUIRED_DB = args.required_db
+    if REQUIRED_DB == "aml":   # 评测库不准碰
+        raise SystemExit("refusing to run against the evaluation database 'aml'")
 
     # 运行条件：不满足就不跑（Codex 审查第 4 条）
     db_name = config.DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
@@ -104,8 +110,15 @@ async def main() -> None:
         print("REFUSING TO RUN: " + "; ".join(problems), flush=True)
         sys.exit(2)
 
-    data = json.load(open(args.data, encoding="utf-8"))[: args.limit]
-    todo = data[args.offset:][: args.max_questions]
+    data = json.load(open(args.data, encoding="utf-8"))
+    if args.qids:
+        want = {ln.strip() for ln in open(args.qids, encoding="utf-8") if ln.strip()}
+        todo = [q for q in data if q["question_id"] in want][: args.max_questions]
+        missing = want - {q["question_id"] for q in todo}
+        if missing:
+            raise SystemExit(f"qids not in dataset or over --max-questions: {sorted(missing)[:5]}")
+    else:
+        todo = data[: args.limit][args.offset:][: args.max_questions]
     commit_file = Path(__file__).resolve().parents[1] / "COMMIT"
     commit = commit_file.read_text().strip() if commit_file.exists() else "unknown"
     pool.open()
@@ -116,6 +129,8 @@ async def main() -> None:
     effective["database"] = db_name
     effective["db_session_timezone"] = db_timezone()
     effective["usage_counters"] = usage is not None
+    effective["NOTES_IN_SEARCH"] = getattr(config, "NOTES_IN_SEARCH", None)
+    effective["user_prefix"] = args.user_prefix
     print(f"code {commit[:7]} db={db_name} tz={effective['db_session_timezone']} rerank={config.RERANK_ENABLED} "
           f"fusion={effective['FUSION_RULE']} RERANK_TOPN={config.RERANK_TOPN} top_k={args.top_k}; "
           f"{len(todo)} questions from offset {args.offset}; usage counters: {usage is not None}", flush=True)
@@ -126,7 +141,7 @@ async def main() -> None:
     with open(out, "a" if args.offset else "w", encoding="utf-8") as f:
         for n, q in enumerate(todo, start=args.offset + 1):
             meta = flatten(q)
-            user_id = f"replay:{LME_TAG}:lme:{q['question_id']}"
+            user_id = f"{args.user_prefix}{q['question_id']}"
             before = usage_snapshot()
             if usage is not None:
                 cost = before["rerank"]["tokens"] * RERANK_YUAN_PER_TOKEN + before["embed"]["tokens"] * EMBED_YUAN_PER_TOKEN
