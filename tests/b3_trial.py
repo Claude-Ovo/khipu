@@ -29,7 +29,7 @@ def pick(data: list[dict], per_type: dict[str, int], pool: int) -> list[tuple[in
     return out
 
 
-def run_user(client: httpx.Client, tag: str, qi: int, q: dict, top_k: int) -> dict:
+def run_user(client: httpx.Client, tag: str, qi: int, q: dict, top_k: int, search: bool = True) -> dict:
     uid, sid = f"{tag}:lme:{q['question_id']}", f"{tag}:sample:{qi}"
     msgs = []
     for sdate, turns in zip(q["haystack_dates"], q["haystack_sessions"]):
@@ -48,7 +48,7 @@ def run_user(client: httpx.Client, tag: str, qi: int, q: dict, top_k: int) -> di
         lat.append(time.time() - t0)
         r.raise_for_status()
     t0 = time.time()
-    items = client.post("/search", json={"query": q["question"], "user_id": uid, "top_k": top_k}).json()["data"]
+    items = client.post("/search", json={"query": q["question"], "user_id": uid, "top_k": top_k}).json()["data"] if search else []
     s_lat = time.time() - t0
     note_ranks = [i for i, it in enumerate(items) if "(memory note)" in it["content"] or "(conversation summary)" in it["content"]]
     return {"qi": qi, "question_id": q["question_id"], "type": q["question_type"], "question": q["question"],
@@ -68,20 +68,23 @@ def main() -> None:
     ap.add_argument("--parallel", type=int, default=8)
     ap.add_argument("--tag", default=time.strftime("b3trial-%m%d%H%M"))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--no-search", action="store_true", help="只入库（对照时检索交给 lme_context_dump.py）")
     args = ap.parse_args()
     per_type = {k: int(v) for k, v in (p.split("=") for p in args.per_type.split(","))}
     chosen = pick(json.load(open(args.data, encoding="utf-8")), per_type, args.pool)
     print(f"{len(chosen)} questions: {[(qi, q['question_type']) for qi, q in chosen]}", flush=True)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out + ".qids").write_text("".join(q["question_id"] + "\n" for _, q in chosen), encoding="utf-8")
     client = httpx.Client(base_url=args.base, headers={"Authorization": f"Bearer {args.token}"} if args.token else {},
                           timeout=300)
     t0 = time.time()
     with ThreadPoolExecutor(args.parallel) as ex:
-        rows = list(ex.map(lambda x: run_user(client, args.tag, x[0], x[1], args.top_k), chosen))
+        rows = list(ex.map(lambda x: run_user(client, args.tag, x[0], x[1], args.top_k, not args.no_search), chosen))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    lat = sorted(x for r in rows for x in r["add_latency"])
+    lat = sorted(x for r in rows for x in r["add_latency"]) or [0.0]
     print(f"\nwall {time.time() - t0:.0f}s, adds {len(lat)}, add latency p50 {statistics.median(lat):.1f}s "
           f"p95 {lat[int(len(lat) * 0.95) - 1]:.1f}s max {lat[-1]:.1f}s")
     for r in rows:
