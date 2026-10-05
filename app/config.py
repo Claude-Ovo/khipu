@@ -54,10 +54,14 @@ HOP_RESERVE = _int("HOP_RESERVE", 20)         # 第二跳各路前几条保证�
 # 作为额外的段（kind=note/summary）和原文一起进五路召回、重排、装箱。默认关；关着时写入、索引、返回与第二枪候选逐字相同。
 # 复现：锁快照、temperature 0、固定 seed、只走 OpenAI/Azure 供应商、按输入哈希缓存（同一段原文只调一次，重试不重复花钱）。
 EXTRACT_ENABLED = os.environ.get("EXTRACT_ENABLED", "") == "1"
-EXTRACT_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-EXTRACT_BASE_URL = os.environ.get("EXTRACT_BASE_URL", "https://openrouter.ai/api/v1")
-EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-4o-mini-2024-07-18")
-EXTRACT_PROVIDERS = [p for p in os.environ.get("EXTRACT_PROVIDERS", "openai,azure").split(",") if p]
+# 任何 OpenAI 兼容口都行（OpenRouter、国内中转）。主办方 09-22 答疑：中转渠道允许，须在参赛备注里写明。
+# OpenRouter 的账单地址在大陆时不开放 OpenAI 模型（10-06 实测页面警告），所以默认不再假定是它。
+EXTRACT_API_KEY = os.environ.get("EXTRACT_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+EXTRACT_BASE_URL = os.environ.get("EXTRACT_BASE_URL", "https://aihubmix.com/v1").rstrip("/")
+_ON_OPENROUTER = "openrouter.ai" in EXTRACT_BASE_URL
+EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", ("openai/" if _ON_OPENROUTER else "") + "gpt-4o-mini-2024-07-18")
+# 只有 OpenRouter 认 provider 字段；别家收到不认识的字段可能直接 400，所以默认只在 OpenRouter 上发
+EXTRACT_PROVIDERS = [p for p in os.environ.get("EXTRACT_PROVIDERS", "openai,azure" if _ON_OPENROUTER else "").split(",") if p]
 EXTRACT_SEED = _int("EXTRACT_SEED", 7)
 EXTRACT_MAX_OUTPUT_TOKENS = _int("EXTRACT_MAX_OUTPUT_TOKENS", 3000)   # 30 条事实 + 摘要约 1,500；留余量，截断时解析器还能捞回完整的那几条
 EXTRACT_WINDOW_TOKENS = _int("EXTRACT_WINDOW_TOKENS", 6000)     # 一次调用的原文上限，超了按消息边界切成几窗

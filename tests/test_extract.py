@@ -33,8 +33,8 @@ def _resp(status: int, payload: dict | None = None, text: str = "") -> httpx.Res
     return httpx.Response(status, text=text, request=req)
 
 
-def _completion(content: str, pt: int = 100, ct: int = 20) -> dict:
-    return {"choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+def _completion(content: str, pt: int = 100, ct: int = 20, model: str = "gpt-4o-mini-2024-07-18") -> dict:
+    return {"model": model, "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": pt, "completion_tokens": ct}}
 
 
@@ -108,11 +108,15 @@ def test_long_message_is_clipped_for_extraction_only(monkeypatch):
     assert line.endswith("…[truncated]") and len(line) < 120
 
 
-def test_request_body_locks_snapshot_and_providers(monkeypatch):
+def test_request_body_locks_snapshot(monkeypatch):
     b = extract.request_body("[1] user: hi")
-    assert b["model"] == "openai/gpt-4o-mini-2024-07-18"
+    assert b["model"].endswith("gpt-4o-mini-2024-07-18")
     assert b["temperature"] == 0 and b["seed"] == config.EXTRACT_SEED
     assert b["response_format"] == {"type": "json_object"}
+    monkeypatch.setattr(config, "EXTRACT_PROVIDERS", [])
+    assert "provider" not in extract.request_body("[1] user: hi")   # 中转不认这个字段，不发
+    monkeypatch.setattr(config, "EXTRACT_PROVIDERS", ["openai", "azure"])
+    b = extract.request_body("[1] user: hi")
     assert b["provider"] == {"only": ["openai", "azure"], "allow_fallbacks": False, "require_parameters": True}
     sha = extract.body_sha(b)
     assert sha == extract.body_sha(extract.request_body("[1] user: hi"))
@@ -167,7 +171,7 @@ def test_cache_miss_then_hit(monkeypatch, _offline):
     assert first == again and len(first) == 2
     assert s.calls == 1
     (out, status), = _offline.values()
-    assert status == "ok" and out["raw"] == GOOD
+    assert status == "ok" and out["raw"] == GOOD and out["model"] == "gpt-4o-mini-2024-07-18"
     u = httpclient.usage.snapshot()["extract"]
     assert (u["calls"], u["ok"], u["prompt_tokens"], u["completion_tokens"], u["cache_hits"]) == (1, 1, 120, 30, 1)
 
@@ -374,3 +378,10 @@ def test_mark_latest():
     assert rows[6].note_tag == "[older note on user.job; a newer one is dated 2023-05-09]"
     assert rows[2].note_tag == rows[3].note_tag == "[newest note on user.job]"
     assert rows[4].note_tag == "" and rows[5].note_tag == "" and rows[1].note_tag == ""
+
+
+def test_relay_model_mismatch_is_logged_not_dropped(monkeypatch, caplog):
+    s = _Script([_resp(200, _completion(GOOD, model="qwen-turbo"))])
+    _use(monkeypatch, s)
+    assert len(_run(extract.extract_window("[1] a"))) == 2
+    assert "relay answered with model 'qwen-turbo'" in caplog.text
