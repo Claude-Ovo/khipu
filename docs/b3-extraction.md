@@ -128,3 +128,24 @@ Read by eye:
 - the model still records general knowledge and assistant recommendations despite the prompt.
 
 Full projection: about 22,000 windows → extraction ≈ $18 (≈ ¥130; budget ¥200), Add phase +2–3 h at 16 concurrent Adds. Whether notes help overall needs the paired answer comparison.
+
+## Comparison 1 (10-06, 100 LongMemEval-S questions, paired)
+
+Set: the first 40 multi-session questions of the dev 200, plus the first 30 knowledge-update and 30 temporal-reasoning questions (these two types do not occur in the dev 200). One database (`aml_b3`), ingested once with extraction on; two Search arms over the same rows: `notes` (default) and `raw` (`NOTES_IN_SEARCH=0`). Rerank on, top_k 100, `FUSION_RULE=legacy`. Answers and judging: official LongMemEval templates, qwen-plus-2025-12-01, temperature 0, 3 judge runs (`tests/answer_compare.py`).
+
+| type | n | raw | notes | notes-only right | raw-only right |
+|---|---|---|---|---|---|
+| knowledge-update | 30 | 27 | 29 | 2 | 0 |
+| multi-session | 40 | 20 | 20 | 6 | 6 |
+| temporal-reasoning | 30 | 8 | 12 | 6 | 2 |
+| all | 100 | 55 | 61 | 14 | 8 |
+
+Sign test on the discordant pairs: p = 0.29. The earlier same-input rerun noise was 13 flips in 200, so +6 in 100 is not established by this run alone; the per-type pattern matches the mechanism (absolute dates for durations, current values for updates).
+
+Retrieval: raw-evidence coverage drops when notes take slots — answer turn in top 10: 96 → 91; all gold turns in top 100: 98 → 93; about 40 of the 100 returned items are notes; context 14.3k → 10.4k tokens.
+
+Losses read by eye: multi-session counts where a note adds an item that is not one (a third "project", yoga hours) or double-counts across sessions; two event-order questions.
+
+Cost of this round (trial + comparison): AiHubMix $3.67; Bailian ≈ ¥16 (embedding ¥6.4, rerank ¥7.3, answering/judging ¥2.55). Ingest: 4,332 Adds in 55 min at 12 parallel users, Add p50 7.6 s, p95 19 s, max 52 s; 4,073 extraction calls, 0 failed, 0 empty.
+
+Open: (a) cap or demote notes in the returned list to win back raw coverage without losing the temporal/update gains — Search-side only, re-dump the same data; (b) LoCoMo (two named speakers, multi-hop), where coverage loss could cost more than on LME.
