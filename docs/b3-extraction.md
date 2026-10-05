@@ -67,6 +67,8 @@ Remaining non-determinism: OpenAI does not guarantee identical output for identi
 
 ## Flag off = second-shot candidate
 
+This section is about commit `f591e31` (the extraction code alone). The next commit, `7bd8c74`, deliberately changes tie order in BM25 (see the following section), so from there on the branch matches the candidate only up to that fix.
+
 With `EXTRACT_ENABLED` unset the differences from `full-2-candidate` are: two added columns (`kind` default `msg`, `note_key`), the `extract_cache` table, `AND kind = 'msg'` in the session-last-timestamp query, and an `extract` block in `/health`. Checks:
 
 - offline: `tests/test_extract.py` (28 cases) compares the new neighbor selection with the old implementation on 400 random layouts; the existing suites pass unchanged (65 total);
