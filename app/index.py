@@ -97,7 +97,8 @@ def invalidate(user_id: str) -> None:
 
 def _load_rows(user_id: str) -> list[Row]:
     sql = ("SELECT id, session_id, seq, part, total, role, speaker_name, ts_value, ts_granularity, text, is_rule, "
-           "embedding IS NOT NULL, kind, note_key FROM segments WHERE user_id = %s ORDER BY session_id, seq, part")
+           "embedding IS NOT NULL, kind, note_key FROM segments WHERE user_id = %s"
+           + ("" if config.NOTES_IN_SEARCH else " AND kind = 'msg'") + " ORDER BY session_id, seq, part")
     rows: list[Row] = []
     with pool.connection() as conn:
         for pos, r in enumerate(conn.execute(sql, (user_id,))):

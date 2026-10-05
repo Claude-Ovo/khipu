@@ -71,7 +71,9 @@ EXTRACT_TIMEOUT_S = _float("EXTRACT_TIMEOUT_S", 60)             # 单次尝试�
 EXTRACT_ATTEMPTS = _int("EXTRACT_ATTEMPTS", 3)
 EXTRACT_CONCURRENCY = _int("EXTRACT_CONCURRENCY", 16)
 EXTRACT_TOKEN_CAP = _int("EXTRACT_TOKEN_CAP", 0)                # >0：本进程累计 token 超过它就不再调用、Add 回 503（回放时防烧钱）
-EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"
+# 0 = 检索时把笔记当不存在（索引、向量都只看原文）。同一个库开两个实例，一个带笔记一个不带，就是成对对照，不用再入一遍库
+NOTES_IN_SEARCH = os.environ.get("NOTES_IN_SEARCH", "1") != "0"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)

@@ -97,7 +97,7 @@ def _bm25_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], dict[int, 
 
 def _vector_sql(user_id: str, vec: list[float], n: int) -> list[str]:
     sql = ("SELECT id FROM segments WHERE user_id = %s AND embedding IS NOT NULL "
-           "ORDER BY embedding <=> %s::vector LIMIT %s")
+           + ("" if config.NOTES_IN_SEARCH else "AND kind = 'msg' ") + "ORDER BY embedding <=> %s::vector LIMIT %s")
     with pool.connection() as conn:
         return [r[0] for r in conn.execute(sql, (user_id, np.array(vec, dtype=np.float32), n))]
 
