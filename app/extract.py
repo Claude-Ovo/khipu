@@ -125,15 +125,17 @@ def build_windows(messages: list[dict]) -> list[str]:
 
 
 def request_body(window: str) -> dict:
-    return {
+    body = {
         "model": config.EXTRACT_MODEL,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": window}],
         "temperature": 0,
         "seed": config.EXTRACT_SEED,
         "max_tokens": config.EXTRACT_MAX_OUTPUT_TOKENS,
         "response_format": {"type": "json_object"},
-        "provider": {"only": config.EXTRACT_PROVIDERS, "allow_fallbacks": False, "require_parameters": True},
     }
+    if config.EXTRACT_PROVIDERS:  # OpenRouter 专用：只走这几家供应商、不回落、不支持的参数不许静默丢掉
+        body["provider"] = {"only": config.EXTRACT_PROVIDERS, "allow_fallbacks": False, "require_parameters": True}
+    return body
 
 
 def body_sha(body: dict) -> str:
@@ -235,8 +237,9 @@ def _notes_from(output: dict) -> list[Note]:
 
 # ---------- 调用 ----------
 
-async def _call(body: dict) -> tuple[str | None, str, int | None, int | None]:
-    """返回 (回复正文, 状态, prompt_tokens, completion_tokens)。状态 ok，或 empty:<原因>（确定性的坏结果，正文为 None）。"""
+async def _call(body: dict) -> tuple[str | None, str, int | None, int | None, str | None]:
+    """返回 (回复正文, 状态, prompt_tokens, completion_tokens, 回复里报的模型名)。
+    状态 ok，或 empty:<原因>（确定性的坏结果，正文为 None）。"""
     delay = 1.0
     for attempt in range(config.EXTRACT_ATTEMPTS):
         if config.EXTRACT_TOKEN_CAP and usage.extract_tokens() >= config.EXTRACT_TOKEN_CAP:
@@ -256,7 +259,7 @@ async def _call(body: dict) -> tuple[str | None, str, int | None, int | None]:
             if r.status_code >= 400:  # 400 / 403 内容审核 / 413 太长：输入本身的问题，按空结果收下
                 usage.extract(False, None, None, ms)
                 log.warning("extract %s, keeping empty: %s", r.status_code, r.text[:300])
-                return None, f"empty:http{r.status_code}", None, None
+                return None, f"empty:http{r.status_code}", None, None, None
             payload = r.json()
             choices = payload.get("choices") if isinstance(payload, dict) else None
             if not choices:  # OpenRouter 偶尔 200 里装着 error
@@ -265,9 +268,12 @@ async def _call(body: dict) -> tuple[str | None, str, int | None, int | None]:
             u = payload.get("usage") or {}
             pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
             usage.extract(True, pt, ct, ms)
-            log.info("extract ok in=%s out=%s %dms attempt=%d finish=%s", pt, ct, ms, attempt + 1,
-                     choices[0].get("finish_reason"))
-            return content, "ok", pt, ct
+            model = payload.get("model")
+            if not (isinstance(model, str) and "gpt-4o-mini" in model):  # 中转换了模型：只记日志，结果照收，事后查
+                log.error("extract: relay answered with model %r, expected %s", model, config.EXTRACT_MODEL)
+            log.info("extract ok in=%s out=%s %dms attempt=%d finish=%s model=%s", pt, ct, ms, attempt + 1,
+                     choices[0].get("finish_reason"), model)
+            return content, "ok", pt, ct, model
         except (httpx.HTTPError, _Retry, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
             ms = ms or int((time.monotonic() - t0) * 1000)
             usage.extract(False, None, None, ms)
@@ -280,7 +286,7 @@ async def _call(body: dict) -> tuple[str | None, str, int | None, int | None]:
 
 
 async def _extract_uncached(sha: str, body: dict) -> list[Note]:
-    content, status, pt, ct = await _call(body)
+    content, status, pt, ct, model = await _call(body)
     notes: list[Note] = []
     if content is not None:
         notes, ok = parse_output(content)
@@ -289,7 +295,8 @@ async def _extract_uncached(sha: str, body: dict) -> list[Note]:
     if status != "ok":
         usage.extract_gave_empty()
         log.warning("extract window %s kept empty (%s)", sha[:12], status)
-    await asyncio.to_thread(_cache_put, sha, {"items": [asdict(n) for n in notes], "raw": content}, status, pt, ct)
+    await asyncio.to_thread(_cache_put, sha, {"items": [asdict(n) for n in notes], "raw": content, "model": model},
+                            status, pt, ct)
     return notes
 
 
@@ -339,7 +346,7 @@ async def extract_window(window: str) -> list[Note]:
 async def extract_request(messages: list[dict]) -> list[Note]:
     """一个 Add 请求的全部笔记，按窗的顺序；跨窗重复的事实只留第一次。"""
     if not config.EXTRACT_API_KEY:
-        raise ExtractUnavailable("OPENROUTER_API_KEY is empty")
+        raise ExtractUnavailable("EXTRACT_API_KEY is empty")
     windows = build_windows(messages)
     if not windows:
         return []
