@@ -79,7 +79,8 @@ Remaining non-determinism: OpenAI does not guarantee identical output for identi
 | `EXTRACT_TIMEOUT_S` / `EXTRACT_ATTEMPTS` | 60 / 3 | |
 | `EXTRACT_CONCURRENCY` | 16 | own HTTP client and pool, separate from Bailian |
 | `EXTRACT_TOKEN_CAP` | 0 (off) | per-process spend guard for replays |
-| `EXTRACT_MARK_LATEST` | off | Search-side newest/older tags |
+| `EXTRACT_MARK_LATEST` | off | Search-side newest/older tags. **Do not enable** — trial 10-06: keys differ across windows for the same attribute (`user.korean_restaurants` vs `user.korean_restaurants_experience`), so it would tag a stale value as newest |
+| `NOTES_IN_SEARCH` | on | `0` hides notes from indexing and vector search: two instances on one database give a paired with/without comparison |
 
 ## Flag off = second-shot candidate
 
@@ -113,3 +114,17 @@ Latency: an Add now waits for one completion (≈ 1,000 output tokens, 10–20 s
 
 - No paid call has been made; prompt quality is untested. First paid step: 20 LME questions with `EXTRACT_TOKEN_CAP`, read the notes by eye, then the 200-question answer comparison (extraction vs current, paired per question).
 - User-level summaries across sessions are not built: they would depend on Add order, which the platform controls.
+
+## Trial 1 (10-06, 8 LongMemEval-S questions, AiHubMix)
+
+Probe: reported model `gpt-4o-mini-2024-07-18`, prompt_tokens 153 = o200k count, identical replies to identical requests, fingerprint `fp_99f88af1c5`.
+
+346 windows, 0 failures, 0 empty. Per window: 3,094 input / 577 output tokens, 7.1 s average (Add p50 8.2 s, p95 16–18 s, max 37 s). Cost: extraction $0.28, Bailian about ¥0.7. Notes ≈ 0.8 per stored message; about 40–50 of the 100 returned items are notes on temporal and knowledge-update questions.
+
+Read by eye:
+- single-session fact and preference questions: the answering note is at rank 0–1;
+- temporal reasoning: notes carry absolute dates for each event (helpful for ordering and day counts);
+- knowledge update: Korean restaurants — the newest value ("four") at rank 1; 5K personal best — the **stale** value (27:12) at rank 0, the current one (25:50) at rank 9;
+- the model still records general knowledge and assistant recommendations despite the prompt.
+
+Full projection: about 22,000 windows → extraction ≈ $18 (≈ ¥130; budget ¥200), Add phase +2–3 h at 16 concurrent Adds. Whether notes help overall needs the paired answer comparison.
