@@ -36,6 +36,8 @@ class Segment:
     content_sha: str
     is_rule: bool
     names: list[str] = field(default_factory=list)
+    kind: str = "msg"            # msg 原文 / note 抽出的事实行 / summary 会话摘要（B3）
+    note_key: str | None = None  # 事实的话题键，只有 note 有
 
 
 def ts_from_ms(ms: int | float | None) -> tuple[datetime | None, str]:
@@ -120,3 +122,26 @@ def build_segments(user_id: str, session_id: str, request_id: str, messages: lis
             ))
         seq += 1
     return segments
+
+
+NOTE_PART_BASE = 1000  # 笔记的 part 从 1001 起：同 seq 排在这一包最后一条消息的所有子段之后、下一包之前
+
+
+def build_note_segments(msg_segments: list[Segment], notes: list) -> list[Segment]:
+    """B3：一个 Add 请求抽出的笔记（extract.Note）挂在这一包最后一条消息后面，时间用那条消息的时间（即「哪天说的」；
+    事件本身的日期模型已经写进正文）。id 是 session#seq.nN，和原文的 session#seq.part 不会撞，回放脚本认金标证据的正则也碰不到它。"""
+    if not msg_segments or not notes:
+        return []
+    last = msg_segments[-1]
+    out: list[Segment] = []
+    for n, note in enumerate(notes, start=1):
+        sha = hashlib.sha256(f"{note.kind}\n{note.text}".encode("utf-8")).hexdigest()[:24]
+        out.append(Segment(
+            id=f"{last.session_id}#{last.seq}.n{n}",
+            user_id=last.user_id, session_id=last.session_id, request_id=last.request_id,
+            seq=last.seq, part=NOTE_PART_BASE + n, total=1, role=note.kind, speaker_name=note.subject,
+            ts_value=last.ts_value, ts_granularity=last.ts_granularity, ts_provenance="derived",
+            text=note.text, content_sha=sha, is_rule=False, names=extract_names(note.text),
+            kind=note.kind, note_key=note.key,
+        ))
+    return out

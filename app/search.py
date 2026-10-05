@@ -252,6 +252,21 @@ def _both_first(order: list[int], hit_by: dict[int, set[str]]) -> list[int]:
     return both + rest
 
 
+def _msg_step(idx: UserIndex, p: int, step: int, d: int) -> int | None:
+    """从 p 往 step 方向数第 d 条原文段，跳过夹在中间的笔记（B3）；出了会话或越界返回 None。
+    没有笔记时就是 p + step * d（同会话的段在行序里是连续的）。"""
+    sid = idx.rows[p].session_id
+    q, n = p, 0
+    while True:
+        q += step
+        if not 0 <= q < len(idx.rows) or idx.rows[q].session_id != sid:
+            return None
+        if idx.rows[q].kind == "msg":
+            n += 1
+            if n == d:
+                return q
+
+
 def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
     """前 N 个锚点的同会话前后各一段，放在前 20 条命中之后，总数封顶 k 的一小部分。
     紧贴锚点插入会把真命中挤出前 10（9-26 消融 any@10 0.54 → 0.47），每条自带日期和说话人，读者不靠相邻也能对上。"""
@@ -264,10 +279,11 @@ def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
     inside = set(order[:k])
     neighbors: list[int] = []
     for p in order[: config.NEIGHBOR_ANCHORS]:
-        cands = [p + s * d for d in range(1, config.NEIGHBOR_RADIUS + 1) for s in (-1, 1)]  # 先近后远
+        if idx.rows[p].kind != "msg":  # 抽出的笔记没有「前后文」，不当锚
+            continue
+        cands = [_msg_step(idx, p, s, d) for d in range(1, config.NEIGHBOR_RADIUS + 1) for s in (-1, 1)]  # 先近后远
         for q in cands:
-            ok = 0 <= q < len(idx.rows) and q not in inside and q not in neighbors
-            if ok and idx.rows[q].session_id == idx.rows[p].session_id:
+            if q is not None and q not in inside and q not in neighbors:
                 neighbors.append(q)
                 if len(neighbors) >= cap:
                     break
@@ -338,7 +354,15 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
     return head + order[len(head):]
 
 
+_NOTE_LABEL = {"note": "(memory note)", "summary": "(conversation summary)"}
+
+
 def _render(idx: UserIndex, r: Row) -> str:
+    if r.kind != "msg":
+        # 抽出的笔记：日期头是「哪天说的」，正文自带主语和事件日期；标明是笔记，别让答题的人当成某人的原话
+        head = date_header(r.ts_value, r.ts_granularity, idx.session_label.get(r.session_id, "session ?"))
+        tag = f" {r.note_tag}" if r.note_tag else ""
+        return f"{head} {_NOTE_LABEL.get(r.kind, '(note)')} {r.text}{tag}"
     who = r.speaker_name or r.role
     text = r.text
     if r.speaker_name and text.startswith(f"{r.speaker_name}:"):

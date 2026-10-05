@@ -22,9 +22,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator, model_validator
 
 from . import config
-from .chunking import build_segments
+from .chunking import build_note_segments, build_segments
 from .db import init_schema, pool
 from .embed import embed_texts
+from .extract import NOTE_ROLES, ExtractUnavailable, extract_request
 from .httpclient import aclose as close_http, usage
 from .index import invalidate
 from .search import search as run_search
@@ -295,12 +296,16 @@ async def require_auth(authorization: str | None = Header(default=None), x_api_k
 
 def _embed_text_of(role: str, speaker: str | None, text: str) -> str:
     # 向量文本不带日期：日期依赖库里的继承状态，放进去就没法在事务前算；日期信号交给 BM25 索引
+    if role in NOTE_ROLES:  # 抽出的笔记正文里已经写明主语
+        return text
     return f"{speaker or role}: {text}"
 
 
-def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[float]]) -> tuple[dict, list]:
+def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[float]],
+                     notes: list | None = None) -> tuple[dict, list]:
     """返回 (响应, 新写入的段列表)。段列表为空表示这是重放。vectors 以「正文」为键，写入时一并落库，
-    所以只要 key 配好，库里每一段都带向量，复现时不会因为回填时机不同而结果不同。"""
+    所以只要 key 配好，库里每一段都带向量，复现时不会因为回填时机不同而结果不同。
+    notes：B3 抽出的笔记，和原文同一个事务写入，要么都在、要么都不在。"""
     response = {"success": True, "request_id": req.request_id, "user_id": req.user_id, "session_id": req.session_id}
     with pool.connection() as conn:
         with conn.transaction():
@@ -320,21 +325,23 @@ def _add_transaction(req: AddRequest, payload_sha: str, vectors: dict[str, list[
             last = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM segments WHERE user_id = %s AND session_id = %s",
                                 (req.user_id, req.session_id)).fetchone()[0]
             last_ts = conn.execute("SELECT ts_value, ts_granularity FROM segments WHERE user_id = %s AND session_id = %s "
-                                   "AND ts_value IS NOT NULL ORDER BY seq DESC, part DESC LIMIT 1",
+                                   "AND ts_value IS NOT NULL AND kind = 'msg' ORDER BY seq DESC, part DESC LIMIT 1",
                                    (req.user_id, req.session_id)).fetchone()
             session_last_ts = (last_ts[0], last_ts[1]) if last_ts else (None, "unknown")
             segments = build_segments(req.user_id, req.session_id, req.request_id,
                                       [m.model_dump() for m in req.messages], int(last) + 1, session_last_ts)
+            segments = segments + build_note_segments(segments, notes or [])
             with conn.cursor() as cur:
                 if segments:
                     cur.executemany(
                     "INSERT INTO segments (user_id, id, session_id, request_id, seq, part, total, role, speaker_name, "
-                    "ts_value, ts_granularity, ts_provenance, text, content_sha, is_rule, embedding) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "ts_value, ts_granularity, ts_provenance, text, content_sha, is_rule, embedding, kind, note_key) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     [(s.user_id, s.id, s.session_id, s.request_id, s.seq, s.part, s.total, s.role, s.speaker_name,
                       s.ts_value, s.ts_granularity, s.ts_provenance, s.text, s.content_sha, s.is_rule,
                       (np.array(vectors[_embed_text_of(s.role, s.speaker_name, s.text)], dtype=np.float32)
-                       if _embed_text_of(s.role, s.speaker_name, s.text) in vectors else None)) for s in segments])
+                       if _embed_text_of(s.role, s.speaker_name, s.text) in vectors else None),
+                      s.kind, s.note_key) for s in segments])
     return response, segments
 
 
@@ -467,6 +474,14 @@ async def add(req: AddRequest) -> dict[str, Any]:
     if len(kept) != len(req.messages):  # 空内容以前回 422；现在跳过这几条，其余照常写（合法请求不会走到这里）
         log.info("add %s: skipped %d empty message(s) of %d", req.request_id, len(req.messages) - len(kept), len(req.messages))
         req = req.model_copy(update={"messages": kept})
+    # B3：先抽取（调不通回 503，和向量同一套语义：不写半截数据）。抽取只看请求本身，不看库
+    notes = []
+    if config.EXTRACT_ENABLED and req.messages:
+        try:
+            notes = await extract_request([m.model_dump() for m in req.messages])
+        except ExtractUnavailable as e:
+            log.warning("add %s: extraction unavailable: %s", req.request_id, e)
+            raise HTTPException(status_code=503, detail="extraction temporarily unavailable, retry later") from e
     # 先算向量再进事务：向量文本只含说话人和正文，不依赖库里状态，所以能在写入前算好、随段一起落库。
     # 算不出来（限流、断网）就回 503 让平台稍后重试（合同里 503 是可重试的），不留没向量的段——复现时库的状态必须一样。
     vectors: dict[str, list[float]] = {}
@@ -476,12 +491,13 @@ async def add(req: AddRequest) -> dict[str, Any]:
         for m in req.messages:
             sp = speaker_prefix(m.content)
             texts.extend(_embed_text_of(m.role, sp, piece) for piece in _split_long(m.content, config.SEGMENT_MAX_TOKENS))
+        texts.extend(_embed_text_of(n.kind, n.subject, n.text) for n in notes)
         uniq = list(dict.fromkeys(texts))
         vecs = await embed_texts(uniq)
         if any(v is None for v in vecs):
             raise HTTPException(status_code=503, detail="embedding temporarily unavailable, retry later")
         vectors = dict(zip(uniq, vecs))
-    response, segments = await asyncio.to_thread(_add_transaction, req, payload_sha, vectors)
+    response, segments = await asyncio.to_thread(_add_transaction, req, payload_sha, vectors, notes)
     if segments:
         invalidate(req.user_id)
     return response

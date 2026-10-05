@@ -46,6 +46,23 @@ CREATE TABLE IF NOT EXISTS segments (
 );
 CREATE INDEX IF NOT EXISTS segments_user_seq ON segments (user_id, session_id, seq, part);
 CREATE INDEX IF NOT EXISTS segments_user_novec ON segments (user_id) WHERE embedding IS NULL;
+
+-- B3 抽取（2026-10-06）：kind = msg（原文）/ note（抽出的事实行）/ summary（会话摘要）；note_key 是事实的话题键（user.job 之类）。
+-- 旧库原地加列，已有的行全是 msg。
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'msg';
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS note_key TEXT;
+
+-- 抽取结果按输入哈希缓存：同一段原文（同模型、同提示词版本）只调一次模型。也是交给主办方核对的抽取存档。
+CREATE TABLE IF NOT EXISTS extract_cache (
+    input_sha      TEXT PRIMARY KEY,
+    model          TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    output         JSONB NOT NULL,
+    status         TEXT NOT NULL,
+    prompt_tokens  INTEGER,
+    completion_tokens INTEGER,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
