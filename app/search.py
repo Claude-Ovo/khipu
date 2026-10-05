@@ -86,7 +86,9 @@ def _bm25_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], dict[int, 
     q_tokens = set(tokenize(q))
     if not q_tokens:
         return [], {}
-    scores = idx.bm25.get_scores(list(q_tokens))
+    # 排好序再打分：集合的遍历顺序随进程的哈希种子变，get_scores 按词累加浮点，顺序一变尾数就变，同分段的名次跟着换
+    # （10-06 对拍：两进程同数据同代码，4012 次检索里 71 次前 100 名的尾部顺序不同；排序后为 0）
+    scores = idx.bm25.get_scores(sorted(q_tokens))
     cand = [i for i, ts in enumerate(idx.token_sets) if ts & q_tokens]
     cand.sort(key=lambda i: -scores[i])
     hits = cand[:n]
