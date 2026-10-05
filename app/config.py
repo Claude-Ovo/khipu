@@ -50,6 +50,25 @@ HOP_QUERY_W = _float("HOP_QUERY_W", 0.6)      # 向量第二跳里原查询向�
 HOP_W = _float("HOP_W", 0.6)                  # 两路第二跳在 RRF 里的分量
 HOP_RESERVE = _int("HOP_RESERVE", 20)         # 第二跳各路前几条保证进重排窗口（审查 #4：否则被双命中前置挤出窗口）
 
+# Add 时抽取（B3，2026-10-06）：每个 Add 请求的原文交给 gpt-4o-mini，抽出带日期和主语的事实行 + 一条会话摘要，
+# 作为额外的段（kind=note/summary）和原文一起进五路召回、重排、装箱。默认关；关着时写入、索引、返回与第二枪候选逐字相同。
+# 复现：锁快照、temperature 0、固定 seed、只走 OpenAI/Azure 供应商、按输入哈希缓存（同一段原文只调一次，重试不重复花钱）。
+EXTRACT_ENABLED = os.environ.get("EXTRACT_ENABLED", "") == "1"
+EXTRACT_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+EXTRACT_BASE_URL = os.environ.get("EXTRACT_BASE_URL", "https://openrouter.ai/api/v1")
+EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-4o-mini-2024-07-18")
+EXTRACT_PROVIDERS = [p for p in os.environ.get("EXTRACT_PROVIDERS", "openai,azure").split(",") if p]
+EXTRACT_SEED = _int("EXTRACT_SEED", 7)
+EXTRACT_MAX_OUTPUT_TOKENS = _int("EXTRACT_MAX_OUTPUT_TOKENS", 3000)   # 30 条事实 + 摘要约 1,500；留余量，截断时解析器还能捞回完整的那几条
+EXTRACT_WINDOW_TOKENS = _int("EXTRACT_WINDOW_TOKENS", 6000)     # 一次调用的原文上限，超了按消息边界切成几窗
+EXTRACT_MSG_MAX_TOKENS = _int("EXTRACT_MSG_MAX_TOKENS", 3000)   # 单条消息送去抽取的上限（长篇助手回答只截前面；原文照常全量入库）
+EXTRACT_MAX_FACTS = _int("EXTRACT_MAX_FACTS", 40)               # 每窗最多收几条事实
+EXTRACT_TIMEOUT_S = _float("EXTRACT_TIMEOUT_S", 60)             # 单次尝试的读超时
+EXTRACT_ATTEMPTS = _int("EXTRACT_ATTEMPTS", 3)
+EXTRACT_CONCURRENCY = _int("EXTRACT_CONCURRENCY", 16)
+EXTRACT_TOKEN_CAP = _int("EXTRACT_TOKEN_CAP", 0)                # >0：本进程累计 token 超过它就不再调用、Add 回 503（回放时防烧钱）
+EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
 

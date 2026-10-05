@@ -56,6 +56,9 @@ class Row:
     is_rule: bool
     has_vector: bool
     names: list[str] = field(default_factory=list)
+    kind: str = "msg"            # msg 原文 / note 抽出的事实行 / summary 会话摘要（B3）
+    note_key: str | None = None
+    note_tag: str = ""           # EXTRACT_MARK_LATEST 时同话题键的新旧标记，渲染时接在正文后
 
 
 @dataclass
@@ -94,17 +97,42 @@ def invalidate(user_id: str) -> None:
 
 def _load_rows(user_id: str) -> list[Row]:
     sql = ("SELECT id, session_id, seq, part, total, role, speaker_name, ts_value, ts_granularity, text, is_rule, "
-           "embedding IS NOT NULL FROM segments WHERE user_id = %s ORDER BY session_id, seq, part")
+           "embedding IS NOT NULL, kind, note_key FROM segments WHERE user_id = %s ORDER BY session_id, seq, part")
     rows: list[Row] = []
     with pool.connection() as conn:
         for pos, r in enumerate(conn.execute(sql, (user_id,))):
-            rows.append(Row(pos, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11]))
+            rows.append(Row(pos, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11],
+                            kind=r[12], note_key=r[13]))
     return rows
 
 
 def _index_text(row: Row) -> str:
-    who = row.speaker_name or row.role
+    # 笔记的 role 是 note/summary，不是说话人，别让这两个词进 BM25
+    who = row.speaker_name or (row.role if row.kind == "msg" else "")
     return " ".join([who, *date_strings(row.ts_value), row.text])
+
+
+def mark_latest(rows: list[Row]) -> None:
+    """同一话题键（user.job 之类）有几条笔记时，按「哪天说的」标出新旧，只陈述日期不下结论：
+    键是模型逐窗起的，多值的话题（宠物、爱好）也会共用一个键，旧的不一定作废，判断留给答题的人。
+    同一天的几条都算最新。"""
+    groups: dict[str, list[Row]] = {}
+    for r in rows:
+        if r.kind == "note" and r.note_key:
+            groups.setdefault(r.note_key, []).append(r)
+    for key, rs in groups.items():
+        days = sorted({r.ts_value.date() for r in rs if r.ts_value is not None})
+        if len(days) < 2:
+            continue
+        for r in rs:
+            if r.ts_value is None:
+                continue
+            d = r.ts_value.date()
+            if d == days[-1]:
+                r.note_tag = f"[newest note on {key}]"
+            else:
+                later = days[days.index(d) + 1]
+                r.note_tag = f"[older note on {key}; a newer one is dated {later.isoformat()}]"
 
 
 def _containers_index(lowers: list[str]) -> dict[str, list[str]]:
@@ -214,6 +242,8 @@ def _build(user_id: str, version: int) -> UserIndex:
         r.names = extract_names(r.text)
         if r.speaker_name:
             r.names.append(r.speaker_name)
+    if config.EXTRACT_MARK_LATEST:
+        mark_latest(rows)
     groups, alias = group_names([r.names for r in rows])
     alias_words, alias_patterns = build_alias_matcher(alias)
     lower_texts = [r.text.lower() for r in rows]

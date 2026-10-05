@@ -16,8 +16,11 @@ log = logging.getLogger("aml.http")
 
 _client: httpx.AsyncClient | None = None
 
+_llm_client: httpx.AsyncClient | None = None
+
 embed_sem = asyncio.Semaphore(config.EMBED_CONCURRENCY)
 rerank_sem = asyncio.Semaphore(config.RERANK_CONCURRENCY)
+extract_sem = asyncio.Semaphore(config.EXTRACT_CONCURRENCY)
 
 
 def client() -> httpx.AsyncClient:
@@ -35,11 +38,26 @@ def client() -> httpx.AsyncClient:
     return _client
 
 
+def llm_client() -> httpx.AsyncClient:
+    """抽取走 OpenRouter：另一把 key、另一个域名、读超时长得多，所以单独一个客户端，不和百炼抢连接池。"""
+    global _llm_client
+    if _llm_client is None or _llm_client.is_closed:
+        _llm_client = httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {config.EXTRACT_API_KEY}"},
+            limits=httpx.Limits(max_connections=config.EXTRACT_CONCURRENCY,
+                                max_keepalive_connections=config.EXTRACT_CONCURRENCY,
+                                keepalive_expiry=config.HTTP_KEEPALIVE_S),
+            timeout=httpx.Timeout(connect=10.0, read=config.EXTRACT_TIMEOUT_S, write=10.0, pool=30.0),
+        )
+    return _llm_client
+
+
 async def aclose() -> None:
-    global _client
-    if _client is not None and not _client.is_closed:
-        await _client.aclose()
-    _client = None
+    global _client, _llm_client
+    for c in (_client, _llm_client):
+        if c is not None and not c.is_closed:
+            await c.aclose()
+    _client = _llm_client = None
 
 
 def retryable_status(status: int) -> bool:
@@ -69,6 +87,10 @@ class _Usage:
         self.rerank_ms = 0
         self.rerank_timeouts = 0      # 外层 RERANK_TIMEOUT_S 掐断的次数（search.py 记）
         self.rerank_skipped = 0       # 最终没做重排、按融合顺序返回的检索次数
+        self.extract_calls = self.extract_ok = self.extract_failed = self.extract_ms = 0
+        self.extract_prompt_tokens = self.extract_completion_tokens = 0
+        self.extract_cache_hits = 0   # 命中缓存、没花钱的窗
+        self.extract_empty = 0        # 模型给了确定性的坏结果（400/内容审核/解析不了），按空结果收下的窗
 
     def embed(self, ok: bool, tokens: int | None, ms: int) -> None:
         with self._lock:
@@ -90,6 +112,29 @@ class _Usage:
             else:
                 self.rerank_failed += 1
 
+    def extract(self, ok: bool, prompt_tokens: int | None, completion_tokens: int | None, ms: int) -> None:
+        with self._lock:
+            self.extract_calls += 1
+            self.extract_ms += ms
+            self.extract_prompt_tokens += prompt_tokens or 0
+            self.extract_completion_tokens += completion_tokens or 0
+            if ok:
+                self.extract_ok += 1
+            else:
+                self.extract_failed += 1
+
+    def extract_cached(self) -> None:
+        with self._lock:
+            self.extract_cache_hits += 1
+
+    def extract_gave_empty(self) -> None:
+        with self._lock:
+            self.extract_empty += 1
+
+    def extract_tokens(self) -> int:
+        with self._lock:
+            return self.extract_prompt_tokens + self.extract_completion_tokens
+
     def rerank_gave_up(self, timeout: bool) -> None:
         with self._lock:
             self.rerank_skipped += 1
@@ -106,6 +151,11 @@ class _Usage:
                            "tokens": self.rerank_tokens,
                            "avg_ms": round(self.rerank_ms / self.rerank_calls) if self.rerank_calls else 0,
                            "skipped": self.rerank_skipped, "timeouts": self.rerank_timeouts},
+                "extract": {"calls": self.extract_calls, "ok": self.extract_ok, "failed": self.extract_failed,
+                            "prompt_tokens": self.extract_prompt_tokens,
+                            "completion_tokens": self.extract_completion_tokens,
+                            "avg_ms": round(self.extract_ms / self.extract_calls) if self.extract_calls else 0,
+                            "cache_hits": self.extract_cache_hits, "empty": self.extract_empty},
             }
 
 

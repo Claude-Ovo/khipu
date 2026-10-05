@@ -1,0 +1,376 @@
+"""B3 抽取（Add 时 gpt-4o-mini）的离线测试：不连库、不联网、不花钱。
+切窗、请求体、解析、缓存与并发去重、失败分类、笔记入段、邻居跳过笔记、笔记渲染、同话题新旧标记。
+用法：.venv/Scripts/python.exe -m pytest tests/test_extract.py -q"""
+from __future__ import annotations
+
+import asyncio
+import random
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
+
+import httpx
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app import chunking, config, extract, httpclient, search  # noqa: E402
+from app.index import Row, _index_text, mark_latest  # noqa: E402
+from app.main import _embed_text_of  # noqa: E402
+
+MAY20 = int(datetime(2023, 5, 20, 14, 2, tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def _run(coro):
+    return asyncio.new_event_loop().run_until_complete(coro)
+
+
+def _resp(status: int, payload: dict | None = None, text: str = "") -> httpx.Response:
+    req = httpx.Request("POST", "https://example.invalid/chat/completions")
+    if payload is not None:
+        return httpx.Response(status, json=payload, request=req)
+    return httpx.Response(status, text=text, request=req)
+
+
+def _completion(content: str, pt: int = 100, ct: int = 20) -> dict:
+    return {"choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": pt, "completion_tokens": ct}}
+
+
+GOOD = ('{"facts": [{"text": "Caroline adopted a dog named Max on 19 May 2023.", "subject": "Caroline", '
+        '"key": "caroline.pets"}], "summary": "Caroline told Melanie about her new dog on 20 May 2023."}')
+
+
+class _Script:
+    def __init__(self, items, gate: asyncio.Event | None = None):
+        self.items = list(items)
+        self.calls = 0
+        self.bodies: list[dict] = []
+        self.gate = gate
+
+    async def post(self, url, json=None, **kw):
+        self.calls += 1
+        self.bodies.append(json)
+        if self.gate is not None:
+            await self.gate.wait()
+        item = self.items.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    store: dict[str, tuple] = {}
+    monkeypatch.setattr(config, "EXTRACT_API_KEY", "test-key")
+    monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 0)
+    monkeypatch.setattr(extract, "_cache_get", lambda sha: store[sha][0] if sha in store else None)
+    monkeypatch.setattr(extract, "_cache_put", lambda sha, out, status, pt, ct: store.setdefault(sha, (out, status)))
+    monkeypatch.setattr(extract, "extract_sem", asyncio.Semaphore(4))
+    monkeypatch.setattr(extract, "_inflight", {})
+    monkeypatch.setattr(httpclient, "usage", httpclient._Usage())
+    monkeypatch.setattr(extract, "usage", httpclient.usage)
+
+    async def no_sleep(_):
+        return None
+    monkeypatch.setattr(extract.asyncio, "sleep", no_sleep)
+    return store
+
+
+def _use(monkeypatch, script):
+    monkeypatch.setattr(extract, "llm_client", lambda: script)
+
+
+# ---------- 切窗与请求体 ----------
+
+def test_windows_render_dates_speakers_and_keep_numbering():
+    msgs = [{"role": "user", "content": "Caroline: I adopted a dog yesterday", "timestamp": MAY20},
+            {"role": "assistant", "content": "   ", "timestamp": None},
+            {"role": "assistant", "content": "Congrats!", "timestamp": None}]
+    w = extract.build_windows(msgs)
+    assert w == ["[1] 2023-05-20 (Sat) 14:02 Caroline: I adopted a dog yesterday\n[3] assistant: Congrats!"]
+    assert extract.build_windows(msgs) == w  # 只看请求本身，永远切出同样的窗
+
+
+def test_windows_split_on_message_boundaries(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_WINDOW_TOKENS", 30)
+    msgs = [{"role": "user", "content": f"message number {i} " + "word " * 8, "timestamp": MAY20} for i in range(6)]
+    w = extract.build_windows(msgs)
+    assert len(w) > 1
+    lines = [ln for win in w for ln in win.split("\n")]
+    assert [ln.split("]")[0] for ln in lines] == [f"[{i}" for i in range(1, 7)]  # 每条消息完整、按序、只出现一次
+
+
+def test_long_message_is_clipped_for_extraction_only(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_MSG_MAX_TOKENS", 10)
+    line = extract.message_line(1, {"role": "assistant", "content": "lorem ipsum " * 200, "timestamp": None})
+    assert line.endswith("…[truncated]") and len(line) < 120
+
+
+def test_request_body_locks_snapshot_and_providers(monkeypatch):
+    b = extract.request_body("[1] user: hi")
+    assert b["model"] == "openai/gpt-4o-mini-2024-07-18"
+    assert b["temperature"] == 0 and b["seed"] == config.EXTRACT_SEED
+    assert b["response_format"] == {"type": "json_object"}
+    assert b["provider"] == {"only": ["openai", "azure"], "allow_fallbacks": False, "require_parameters": True}
+    sha = extract.body_sha(b)
+    assert sha == extract.body_sha(extract.request_body("[1] user: hi"))
+    assert sha != extract.body_sha(extract.request_body("[1] user: hello"))
+    monkeypatch.setattr(extract, "SYSTEM_PROMPT", extract.SYSTEM_PROMPT + " ")
+    assert sha != extract.body_sha(extract.request_body("[1] user: hi"))  # 改提示词，缓存键自己变
+
+
+# ---------- 解析 ----------
+
+def test_parse_normal_output():
+    notes, ok = extract.parse_output(GOOD)
+    assert ok
+    assert notes == [extract.Note("note", "Caroline adopted a dog named Max on 19 May 2023.", "Caroline", "caroline.pets"),
+                     extract.Note("summary", "Caroline told Melanie about her new dog on 20 May 2023.", None, None)]
+
+
+def test_parse_cleans_subjects_keys_duplicates_and_caps(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_MAX_FACTS", 3)
+    out = ('{"facts": [{"text": "The user  works at\\n Acme.", "subject": "user", "key": " User.Job "},'
+           ' "The user has two cats.", {"text": "the user works at acme."}, {"text": 42}, 7,'
+           ' {"text": "The user lives in Denver.", "subject": "the user", "key": "user/city!"},'
+           ' {"text": "The user runs daily."}], "summary": ""}')
+    notes, ok = extract.parse_output(out)
+    assert ok
+    assert notes == [extract.Note("note", "The user works at Acme.", None, "user.job"),
+                     extract.Note("note", "The user has two cats.", None, None),
+                     extract.Note("note", "The user lives in Denver.", None, "usercity")]
+
+
+def test_parse_fenced_and_truncated_output():
+    notes, ok = extract.parse_output("```json\n" + GOOD + "\n```")
+    assert ok and len(notes) == 2
+    cut = '{"facts": [{"text": "A did x.", "subject": "Anna", "key": null}, {"text": "B did'
+    notes, ok = extract.parse_output(cut)
+    assert ok and notes == [extract.Note("note", "A did x.", "Anna", None)]
+
+
+def test_parse_garbage():
+    assert extract.parse_output("Sorry, I can't help with that.") == ([], False)
+    assert extract.parse_output("") == ([], False)
+    assert extract.parse_output("[1, 2]") == ([], False)
+
+
+# ---------- 调用、缓存、失败分类 ----------
+
+def test_cache_miss_then_hit(monkeypatch, _offline):
+    s = _Script([_resp(200, _completion(GOOD, 120, 30))])
+    _use(monkeypatch, s)
+    first = _run(extract.extract_window("[1] Caroline: I adopted a dog"))
+    again = _run(extract.extract_window("[1] Caroline: I adopted a dog"))
+    assert first == again and len(first) == 2
+    assert s.calls == 1
+    (out, status), = _offline.values()
+    assert status == "ok" and out["raw"] == GOOD
+    u = httpclient.usage.snapshot()["extract"]
+    assert (u["calls"], u["ok"], u["prompt_tokens"], u["completion_tokens"], u["cache_hits"]) == (1, 1, 120, 30, 1)
+
+
+def test_concurrent_identical_windows_call_once(monkeypatch):
+    async def go():
+        gate = asyncio.Event()
+        s = _Script([_resp(200, _completion(GOOD))], gate=gate)
+        _use(monkeypatch, s)
+        tasks = [asyncio.ensure_future(extract.extract_window("[1] same")) for _ in range(3)]
+        gate.set()
+        res = await asyncio.gather(*tasks)
+        late = await extract.extract_window("[1] same")   # 领头的已经注销：走缓存
+        return s.calls, res + [late]
+    calls, res = _run(go())
+    assert calls == 1
+    assert res[0] == res[1] == res[2] and len(res[0]) == 2
+
+
+def test_400_and_moderation_kept_empty_and_cached(monkeypatch, _offline):
+    s = _Script([_resp(400, text="bad"), _resp(403, text="flagged")])
+    _use(monkeypatch, s)
+    assert _run(extract.extract_window("[1] a")) == []
+    assert _run(extract.extract_window("[1] a")) == []   # 第二次走缓存，不再花钱
+    assert _run(extract.extract_window("[1] b")) == []
+    assert s.calls == 2
+    assert sorted(st for _, st in _offline.values()) == ["empty:http400", "empty:http403"]
+    assert httpclient.usage.snapshot()["extract"]["empty"] == 2
+
+
+def test_parse_failure_kept_empty_and_cached(monkeypatch, _offline):
+    s = _Script([_resp(200, _completion("not json at all"))])
+    _use(monkeypatch, s)
+    assert _run(extract.extract_window("[1] a")) == []
+    assert [st for _, st in _offline.values()] == ["empty:parse"]
+
+
+@pytest.mark.parametrize("status", [401, 402, 404])
+def test_operational_errors_raise_and_do_not_cache(monkeypatch, _offline, status):
+    s = _Script([_resp(status, text="nope")])
+    _use(monkeypatch, s)
+    with pytest.raises(extract.ExtractUnavailable):
+        _run(extract.extract_window("[1] a"))
+    assert s.calls == 1 and not _offline
+
+
+def test_retries_then_succeeds(monkeypatch):
+    s = _Script([_resp(503, text="busy"), httpx.ReadTimeout("slow"), _resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    assert len(_run(extract.extract_window("[1] a"))) == 2
+    assert s.calls == 3
+    u = httpclient.usage.snapshot()["extract"]
+    assert (u["calls"], u["ok"], u["failed"]) == (3, 1, 2)
+
+
+def test_200_without_choices_is_retried(monkeypatch):
+    s = _Script([_resp(200, {"error": {"message": "upstream"}}), _resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    assert len(_run(extract.extract_window("[1] a"))) == 2
+
+
+def test_retries_exhausted_raise_and_do_not_cache(monkeypatch, _offline):
+    s = _Script([_resp(500, text="x")] * config.EXTRACT_ATTEMPTS)
+    _use(monkeypatch, s)
+    with pytest.raises(extract.ExtractUnavailable):
+        _run(extract.extract_window("[1] a"))
+    assert not _offline
+
+
+def test_token_cap_stops_before_calling(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 100)
+    httpclient.usage.extract(True, 90, 20, 5)
+    s = _Script([_resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    with pytest.raises(extract.ExtractUnavailable):
+        _run(extract.extract_window("[1] a"))
+    assert s.calls == 0
+
+
+def test_extract_request_needs_key_and_dedups_across_windows(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_API_KEY", "")
+    with pytest.raises(extract.ExtractUnavailable):
+        _run(extract.extract_request([{"role": "user", "content": "hi", "timestamp": None}]))
+    monkeypatch.setattr(config, "EXTRACT_API_KEY", "k")
+    monkeypatch.setattr(config, "EXTRACT_WINDOW_TOKENS", 5)
+    s = _Script([_resp(200, _completion(GOOD)), _resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    msgs = [{"role": "user", "content": "first message here", "timestamp": MAY20},
+            {"role": "user", "content": "second message here", "timestamp": MAY20}]
+    notes = _run(extract.extract_request(msgs))
+    assert s.calls == 2 and len(notes) == 2   # 两窗各回同样的两条，只留一份
+    assert _run(extract.extract_request([{"role": "user", "content": " ", "timestamp": None}])) == []
+
+
+# ---------- 入段 ----------
+
+def test_note_segments_follow_last_message():
+    segs = chunking.build_segments("u", "s1", "r1", [
+        {"role": "user", "content": "Caroline: I adopted a dog yesterday", "timestamp": MAY20},
+        {"role": "assistant", "content": "Congrats!", "timestamp": None}], 5, (None, "unknown"))
+    notes, _ = extract.parse_output(GOOD)
+    ns = chunking.build_note_segments(segs, notes)
+    assert [n.id for n in ns] == ["s1#6.n1", "s1#6.n2"]
+    assert {n.id for n in ns}.isdisjoint({s.id for s in segs})
+    assert all(n.seq == 6 and n.part > chunking.NOTE_PART_BASE and n.total == 1 for n in ns)
+    assert all(n.ts_value == segs[-1].ts_value and n.ts_provenance == "derived" for n in ns)
+    assert [(n.kind, n.role, n.speaker_name, n.note_key) for n in ns] == [
+        ("note", "note", "Caroline", "caroline.pets"), ("summary", "summary", None, None)]
+    assert "Max" in ns[0].names and not ns[0].is_rule
+    assert chunking.build_note_segments(segs, []) == [] and chunking.build_note_segments([], notes) == []
+
+
+def test_embed_text_of_notes_is_plain_text():
+    assert _embed_text_of("note", "Caroline", "Caroline adopted a dog.") == "Caroline adopted a dog."
+    assert _embed_text_of("summary", None, "They talked.") == "They talked."
+    assert _embed_text_of("user", "Caroline", "hi") == "Caroline: hi"
+    assert _embed_text_of("assistant", None, "hi") == "assistant: hi"
+
+
+# ---------- 索引与检索 ----------
+
+def _row(pos, sid, kind="msg", day=20, text="t", key=None, role=None, speaker=None):
+    ts = datetime(2023, 5, day, 14, 2, tzinfo=timezone.utc)
+    return Row(pos, f"{sid}#{pos}", sid, pos, 1, 1, role or ("user" if kind == "msg" else kind), speaker, ts,
+               "datetime", text, False, True, kind=kind, note_key=key)
+
+
+def _old_with_neighbors(idx, order, k):
+    """第二枪候选 ab8ffb7 的原实现，做对拍。"""
+    cap = int(k * config.NEIGHBOR_CAP_RATIO)
+    if cap <= 0:
+        return order
+    cut = min(20, len(order))
+    inside = set(order[:k])
+    neighbors = []
+    for p in order[: config.NEIGHBOR_ANCHORS]:
+        cands = [p + s * d for d in range(1, config.NEIGHBOR_RADIUS + 1) for s in (-1, 1)]
+        for q in cands:
+            ok = 0 <= q < len(idx.rows) and q not in inside and q not in neighbors
+            if ok and idx.rows[q].session_id == idx.rows[p].session_id:
+                neighbors.append(q)
+                if len(neighbors) >= cap:
+                    break
+        if len(neighbors) >= cap:
+            break
+    if not neighbors:
+        return order
+    nset = set(neighbors)
+    return order[:cut] + neighbors + [p for p in order[cut:] if p not in nset]
+
+
+@pytest.mark.parametrize("radius", [1, 2])
+def test_neighbors_unchanged_without_notes(monkeypatch, radius):
+    monkeypatch.setattr(config, "NEIGHBOR_RADIUS", radius)
+    rng = random.Random(7)
+    for trial in range(200):
+        sizes = [rng.randint(1, 6) for _ in range(rng.randint(1, 8))]
+        rows = [_row(i, f"s{si}") for si, n in enumerate(sizes) for i in range(n)]
+        for i, r in enumerate(rows):
+            r.pos = i
+        idx = SimpleNamespace(rows=rows)
+        order = rng.sample(range(len(rows)), rng.randint(1, len(rows)))
+        k = rng.choice([20, 40, 100])
+        assert search._with_neighbors(idx, order, k) == _old_with_neighbors(idx, order, k), trial
+
+
+def test_neighbors_skip_notes():
+    rows = [_row(0, "a"), _row(1, "a"), _row(2, "a", kind="note"), _row(3, "a", kind="summary"), _row(4, "a"),
+            _row(5, "b")]
+    idx = SimpleNamespace(rows=rows)
+    assert search._msg_step(idx, 1, 1, 1) == 4       # 跳过两条笔记
+    assert search._msg_step(idx, 4, -1, 1) == 1
+    assert search._msg_step(idx, 4, 1, 1) is None    # 会话边界
+    assert search._msg_step(idx, 0, -1, 1) is None
+    assert search._with_neighbors(idx, [1], 100) == [1, 0, 4]
+    assert search._with_neighbors(idx, [2], 100) == [2]  # 笔记不当锚
+
+
+def test_render_notes():
+    idx = SimpleNamespace(session_label={"a": "session 1"})
+    r = _row(0, "a", kind="note", text="Caroline adopted a dog named Max on 19 May 2023.", key="caroline.pets")
+    assert search._render(idx, r) == "[2023-05-20 (Sat) 14:02] (memory note) Caroline adopted a dog named Max on 19 May 2023."
+    r.note_tag = "[newest note on caroline.pets]"
+    assert search._render(idx, r).endswith("19 May 2023. [newest note on caroline.pets]")
+    s = _row(1, "a", kind="summary", text="They talked about dogs.")
+    assert search._render(idx, s) == "[2023-05-20 (Sat) 14:02] (conversation summary) They talked about dogs."
+    m = _row(2, "a", text="hello", speaker="Caroline")
+    assert search._render(idx, m) == "[2023-05-20 (Sat) 14:02] Caroline: hello"
+
+
+def test_index_text_of_notes_has_no_role_word():
+    assert not _index_text(_row(0, "a", kind="note", text="The user works at Acme.")).split()[0] == "note"
+    assert _index_text(_row(0, "a", kind="summary", text="x")).split()[0] == "2023-05-20"
+    assert _index_text(_row(0, "a", kind="note", text="x", speaker="Caroline")).startswith("Caroline ")
+    assert _index_text(_row(0, "a", text="x")).startswith("user ")
+
+
+def test_mark_latest():
+    rows = [_row(0, "a", kind="note", day=1, key="user.job"), _row(1, "a"), _row(2, "b", kind="note", day=9, key="user.job"),
+            _row(3, "b", kind="note", day=9, key="user.job"), _row(4, "b", kind="note", day=9, key="user.city"),
+            _row(5, "b", kind="note", day=3), _row(6, "c", kind="note", day=5, key="user.job")]
+    mark_latest(rows)
+    assert rows[0].note_tag == "[older note on user.job; a newer one is dated 2023-05-05]"
+    assert rows[6].note_tag == "[older note on user.job; a newer one is dated 2023-05-09]"
+    assert rows[2].note_tag == rows[3].note_tag == "[newest note on user.job]"
+    assert rows[4].note_tag == "" and rows[5].note_tag == "" and rows[1].note_tag == ""
