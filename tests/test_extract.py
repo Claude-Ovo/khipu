@@ -362,6 +362,24 @@ def test_render_notes():
     assert search._render(idx, m) == "[2023-05-20 (Sat) 14:02] Caroline: hello"
 
 
+def test_note_rendered_under_speaker_only_when_subject_is_a_speaker():
+    idx = SimpleNamespace(session_label={}, speakers=frozenset({"Caroline", "Melanie"}))
+    r = _row(0, "a", kind="note", text="Caroline adopted a dog.", speaker="Caroline")
+    assert search._render(idx, r) == "[2023-05-20 (Sat) 14:02] Caroline: (memory note) Caroline adopted a dog."
+    r = _row(0, "a", kind="note", text="Dr. Smith sees the user weekly.", speaker="Dr. Smith")
+    assert search._render(idx, r) == "[2023-05-20 (Sat) 14:02] (memory note) Dr. Smith sees the user weekly."
+
+
+def test_notes_cap_in_box(monkeypatch):
+    rows = [_row(i, "a", kind=("note" if i % 2 else "msg"), text=f"t{i}") for i in range(10)]
+    idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})
+    order = list(range(10))
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 0)
+    assert [it["id"] for it in search._box(idx, order, {}, 6)] == [rows[i].id for i in range(6)]
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 1)
+    assert [it["id"] for it in search._box(idx, order, {}, 6)] == [rows[i].id for i in (0, 1, 2, 4, 6, 8)]
+
+
 def test_index_text_of_notes_has_no_role_word():
     assert not _index_text(_row(0, "a", kind="note", text="The user works at Acme.")).split()[0] == "note"
     assert _index_text(_row(0, "a", kind="summary", text="x")).split()[0] == "2023-05-20"

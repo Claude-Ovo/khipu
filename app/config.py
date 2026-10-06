@@ -73,7 +73,9 @@ EXTRACT_CONCURRENCY = _int("EXTRACT_CONCURRENCY", 16)
 EXTRACT_TOKEN_CAP = _int("EXTRACT_TOKEN_CAP", 0)                # >0：本进程累计 token 超过它就不再调用、Add 回 503（回放时防烧钱）
 EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"
 # 0 = 检索时把笔记当不存在（索引、向量都只看原文）。同一个库开两个实例，一个带笔记一个不带，就是成对对照，不用再入一遍库
-NOTES_IN_SEARCH = os.environ.get("NOTES_IN_SEARCH", "1") != "0"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+NOTES_IN_SEARCH = os.environ.get("NOTES_IN_SEARCH", "1") != "0"
+# >0：返回的 top_k 条里笔记最多占这么多条，超出的笔记跳过、让给原文（10-06 对照：不限时 100 条里约 40 条是笔记，原文证据覆盖掉了几个点）
+NOTES_MAX_RETURNED = _int("NOTES_MAX_RETURNED", 0)   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)

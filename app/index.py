@@ -81,6 +81,7 @@ class UserIndex:
     alias_patterns: tuple[tuple[re.Pattern[str], str], ...] = ()
     lower_texts: list[str] = field(default_factory=list)
     token_cache: dict[int, int] = field(default_factory=dict)   # 行号 -> 渲染后的 token 数（search._rendered_tokens 按需填）
+    speakers: frozenset[str] = frozenset()   # 原文里出现过的说话人名（LoCoMo 这类有名字的对话）；笔记的主语是其中之一时挂到他名下渲染
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()
@@ -262,7 +263,8 @@ def _build(user_id: str, version: int) -> UserIndex:
             session_label[r.session_id] = f"session {len(session_label) + 1}"
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
                      {r.id: r.pos for r in rows}, version, token_sets,
-                     alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts)
+                     alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts,
+                     speakers=frozenset(r.speaker_name for r in rows if r.kind == "msg" and r.speaker_name))
 
 
 def get_index(user_id: str) -> UserIndex:
