@@ -364,7 +364,9 @@ def _render(idx: UserIndex, r: Row) -> str:
         # 抽出的笔记：日期头是「哪天说的」，正文自带主语和事件日期；标明是笔记，别让答题的人当成某人的原话
         head = date_header(r.ts_value, r.ts_granularity, idx.session_label.get(r.session_id, "session ?"))
         tag = f" {r.note_tag}" if r.note_tag else ""
-        return f"{head} {_NOTE_LABEL.get(r.kind, '(note)')} {r.text}{tag}"
+        # 主语是对话里的某个说话人时，挂到「名字:」下面：答题模板按渲染头里的说话人把记忆分两栏，不挂的话关于第二个人的笔记会全落进第一栏
+        who = f"{r.speaker_name}: " if r.speaker_name and r.speaker_name in getattr(idx, "speakers", ()) else ""
+        return f"{head} {who}{_NOTE_LABEL.get(r.kind, '(note)')} {r.text}{tag}"
     who = r.speaker_name or r.role
     text = r.text
     if r.speaker_name and text.startswith(f"{r.speaker_name}:"):
@@ -389,10 +391,15 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
     out: list[dict] = []
     used = 0
     skipped = 0
+    notes = 0
     for p in order:
         if len(out) >= top_k:
             break
         r = idx.rows[p]
+        if r.kind != "msg" and config.NOTES_MAX_RETURNED:
+            if notes >= config.NOTES_MAX_RETURNED:
+                continue
+            notes += 1
         t = _rendered_tokens(idx, p)
         if used + t > config.BUDGET_TOKENS:
             skipped += 1
