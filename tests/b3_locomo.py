@@ -79,6 +79,8 @@ async def dump(args) -> None:
         raise SystemExit(f"refusing: db={db_name} rerank={config.RERANK_ENABLED}")
     data = json.load(open(args.data, encoding="utf-8"))
     chosen = pick(data)
+    if args.routed_only:   # 只导会触发时间线清单的题（和不开清单的那一臂逐题对照）
+        chosen = [c for c in chosen if S.is_ledger_query(c[2]["question"])]
     pool.open()
     meta = {}
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
@@ -136,6 +138,7 @@ def main() -> None:
     ap.add_argument("--token", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--max-cost", type=float, default=6.0)
+    ap.add_argument("--routed-only", action="store_true")
     args = ap.parse_args()
     if args.cmd == "ingest":
         ingest(args)
