@@ -149,3 +149,31 @@ Losses read by eye: multi-session counts where a note adds an item that is not o
 Cost of this round (trial + comparison): AiHubMix $3.67; Bailian ≈ ¥16 (embedding ¥6.4, rerank ¥7.3, answering/judging ¥2.55). Ingest: 4,332 Adds in 55 min at 12 parallel users, Add p50 7.6 s, p95 19 s, max 52 s; 4,073 extraction calls, 0 failed, 0 empty.
 
 Open: (a) cap or demote notes in the returned list to win back raw coverage without losing the temporal/update gains — Search-side only, re-dump the same data; (b) LoCoMo (two named speakers, multi-hop), where coverage loss could cost more than on LME.
+
+## Comparison 2 (10-06 night): notes caps, and LoCoMo
+
+Code `7c16619`: `NOTES_MAX_RETURNED` (cap on notes among the returned items) and notes whose subject is one of the conversation's speakers render under that speaker (`[date] Caroline: (memory note) …`), so the answer templates that split memories by speaker put them in the right column. Judging counts majority-correct-with-dissent as correct (the comparison-1 table counted only unanimous-or-plain correct; under this rule `notes` there is 62).
+
+LongMemEval-S, same 100 questions and data:
+
+| arm | total | KU (30) | MS (40) | TR (30) | vs raw | turn@10 | allturn@100 |
+|---|---|---|---|---|---|---|---|
+| raw | 55 | 27 | 20 | 8 | | 96 | 98 |
+| notes | 62 | 29 | 20 | 13 | +15 / −8 | 91 | 93 |
+| cap 20 | 61 | 28 | 22 | 11 | +13 / −7 | 91 | 94 |
+| cap 10 | 60 | 29 | 20 | 11 | +13 / −8 | 91 | 94 |
+
+LoCoMo, 120 questions sampled evenly across the 10 conversations (multi-hop 60, temporal 30, single-hop 30), all 10 conversations ingested with extraction (299 windows, 11.3 s each, ingest 67 min at 10 parallel conversations):
+
+| arm | total | multi-hop | single-hop | temporal | vs raw (p) | gold in top 10 | all gold in top 100 |
+|---|---|---|---|---|---|---|---|
+| raw | 66 | 30 | 24 | 12 | | 109 | 105 |
+| notes | 64 | 28 | 22 | 14 | +17 / −19 (0.87) | 96 | 93 |
+| cap 20 | 70 | 31 | 23 | 16 | +20 / −16 (0.62) | 96 | 97 |
+| cap 10 | 69 | 30 | 24 | 15 | +20 / −17 (0.74) | 96 | 97 |
+
+Reading: on both sets the temporal questions move the most (LME 8 → 11–13, LoCoMo 12 → 14–16). Uncapped notes lose on LoCoMo; capped arms do not. Every difference is inside the noise of a single run (about 30 % of LoCoMo questions flip between any two arms). Several LoCoMo "losses" are judge artefacts against relative gold answers: "20 May 2023" for "the weekend before May 24, 2023" and "17 June 2022" for "the Friday before 24 June 2022" are both the right days and were marked wrong. Real extraction errors seen: a picnic dated from the wrong session, an extra item from a note in list questions.
+
+Combined, cap 20 vs raw over 220 questions: +33 / −23 discordant (sign test p ≈ 0.23).
+
+Cost of this round: AiHubMix $0.18; Bailian ≈ ¥17 (LME dumps ¥6.2, LME answers ¥2.9, LoCoMo dumps ¥4.8, LoCoMo answers ¥3.2).
