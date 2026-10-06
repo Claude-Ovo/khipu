@@ -64,6 +64,19 @@ _TASK = re.compile(r"^\s*(please\s+)?(write|draft|compose|help me|make|create|pl
 _FACTUAL = re.compile(r"^\s*(what|when|who|whom|whose|where|which|how (?:many|much|long|old|often)|did|do|does|is|was|were|are|has|have|had)\b", re.I)
 
 
+# 时间线清单的路由：要高精度，宁可漏不可错（误判的题会多一条无关清单，占一点预算）
+_LEDGER_RX = re.compile(
+    r"\bhow many\b|\bhow much\b.*\b(total|in all|altogether|spen[dt])\b|\bin total\b|\bhow (often|frequently)\b|"
+    r"\b(what|which) (activities|kinds?|types?|things|places|events|hobbies|books|items|instruments|projects|countries|cities|games|sports)\b|"
+    r"\blist (all|every|the)\b|\bsummar(y|i[sz]e)\b|\bover (time|the (past|last))\b|\bhow (has|have|did) .{0,60}\b(chang|evolv|progress|develop)|"
+    r"\b(trend|pattern)s?\b|\busually\b|\btypically\b|\btend to\b|"
+    r"几次|多少次|一共|总共|总计|有哪些|都有什么|总结|回顾|规律|习惯|变化", re.I)
+
+
+def is_ledger_query(query: str) -> bool:
+    return bool(_LEDGER_RX.search(query))
+
+
 def detect_intent(query: str) -> str:
     for name, rx in _INTENT:
         if rx.search(query):
@@ -387,9 +400,69 @@ def _rendered_tokens(idx: UserIndex, p: int) -> int:
     return t
 
 
-def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None) -> list[dict]:
+def _note_vectors_sql(user_id: str, ids: list[str]) -> dict[str, np.ndarray]:
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT id, embedding FROM segments WHERE user_id = %s AND id = ANY(%s) AND embedding IS NOT NULL",
+                            (user_id, ids)).fetchall()
+    out = {}
+    for sid, v in rows:
+        a = np.asarray(v.to_numpy() if hasattr(v, "to_numpy") else v, dtype=np.float32)
+        out[sid] = a / (np.linalg.norm(a) or 1.0)
+    return out
+
+
+def _day(r: Row) -> str:
+    return r.ts_value.strftime("%Y-%m-%d") if r.ts_value is not None else "date unknown"
+
+
+def build_ledger(idx: UserIndex, order: list[int], vectors: dict[str, np.ndarray]) -> str | None:
+    """时间线清单：重排后顺序里的前 LEDGER_MAX_NOTES 条笔记（不含会话摘要），向量近重复的并成一组，
+    每组一行：最早提到的日期、组里最新的那句正文、其余提到的日期；按最早日期从早到晚排。
+    贪心分组按重排顺序走，结果只取决于库里的数据和这次的顺序，与写入先后无关。"""
+    picked = [p for p in order if idx.rows[p].kind == "note"][: config.LEDGER_MAX_NOTES]
+    if len(picked) < 2:
+        return None
+    groups: list[list[int]] = []
+    centers: list[np.ndarray] = []
+    for p in picked:
+        v = vectors.get(idx.rows[p].id)
+        hit = None
+        if v is not None:
+            for gi, c in enumerate(centers):
+                if c is not None and float(c @ v) >= config.LEDGER_DEDUP_COS:
+                    hit = gi
+                    break
+        if hit is None:
+            groups.append([p])
+            centers.append(v)
+        else:
+            groups[hit].append(p)
+
+    def key(p: int) -> tuple:
+        r = idx.rows[p]
+        return (r.ts_value is None, r.ts_value.timestamp() if r.ts_value else 0.0, r.seq, r.part)
+
+    lines = []
+    for g in sorted(groups, key=lambda g: min(key(p) for p in g)):
+        g = sorted(g, key=key)
+        first, latest = g[0], g[-1]
+        others = sorted({_day(idx.rows[p]) for p in g} - {_day(idx.rows[first])})
+        also = f" [also mentioned {', '.join(others)}]" if others else ""
+        lines.append(f"- {_day(idx.rows[first])}{also}: {idx.rows[latest].text}")
+    head = (f"[timeline · {len(lines)} memory notes related to this question, oldest first; "
+            f"repeated mentions of the same fact are merged into one line]")
+    return head + "\n" + "\n".join(lines)
+
+
+def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None,
+         lead: list[dict] | None = None) -> list[dict]:
     out: list[dict] = []
     used = 0
+    for it in lead or []:   # 时间线清单之类的合成条目排最前，同样占 top_k 和预算
+        t = count_tokens(it["content"])
+        if len(out) < top_k and used + t <= config.BUDGET_TOKENS:
+            out.append(it)
+            used += t
     skipped = 0
     notes = 0
     for p in order:
@@ -412,7 +485,8 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
         out.append(item)
         used += t
     if trace is not None:
-        trace["boxed"] = [{"id": it["id"], "tokens": _rendered_tokens(idx, idx.id_to_pos[it["id"]])} for it in out]
+        trace["boxed"] = [{"id": it["id"], "tokens": (_rendered_tokens(idx, idx.id_to_pos[it["id"]]) if it["id"] in idx.id_to_pos
+                                                       else count_tokens(it["content"]))} for it in out]
         trace["boxed_tokens"] = used
         trace["budget_skipped"] = skipped
     return out
@@ -476,6 +550,21 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     if trace is not None:
         trace["pre_rerank"] = [idx.rows[p].id for p in order]    # 实际交给重排的顺序（开第二跳时与 fused 不同）
     order = await _reranked(idx, q, order, scores, must, trace)
+    lead: list[dict] = []
+    if config.LEDGER_ENABLED and config.NOTES_IN_SEARCH and is_ledger_query(query):
+        note_ids = [idx.rows[p].id for p in order if idx.rows[p].kind == "note"][: config.LEDGER_MAX_NOTES]
+        try:
+            vecs = await asyncio.to_thread(_note_vectors_sql, idx.user_id, note_ids) if note_ids else {}
+            text = build_ledger(idx, order, vecs)
+        except Exception as e:  # noqa: BLE001  清单是锦上添花，出错就不给
+            log.warning("ledger skipped: %s %s", type(e).__name__, e)
+            text = None
+        if text:
+            import hashlib  # noqa: PLC0415
+            lead = [{"id": "timeline:" + hashlib.sha256(text.encode()).hexdigest()[:12], "content": text, "text": text,
+                     "score": 1.0}]
+        if trace is not None:
+            trace["ledger"] = text
 
     def finish() -> list[dict]:
         # 规矩口袋、邻居、装箱都是同步 CPU 活；装箱第一次要给几千个候选算 token，放线程里别堵事件循环
@@ -485,6 +574,6 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             scores.setdefault(p, 0.0)
         if trace is not None:
             trace["pre_box"] = [idx.rows[p].id for p in o[: 3 * k]]   # 规矩口袋和邻居插入之后、装箱之前
-        return _box(idx, o, scores, k, trace)
+        return _box(idx, o, scores, k, trace, lead)
 
     return await asyncio.to_thread(finish)

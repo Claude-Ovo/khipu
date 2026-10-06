@@ -403,3 +403,48 @@ def test_relay_model_mismatch_is_logged_not_dropped(monkeypatch, caplog):
     _use(monkeypatch, s)
     assert len(_run(extract.extract_window("[1] a"))) == 2
     assert "relay answered with model 'qwen-turbo'" in caplog.text
+
+
+# ---------- 时间线清单 ----------
+
+def test_ledger_router():
+    yes = ["How many musical instruments do I currently own?", "What activities does Melanie partake in?",
+           "How many days passed between my visit to MoMA and the exhibit?", "Can you summarize my progress over the past months?",
+           "How often do I go running?", "我一共去了几次健身房", "What kinds of books does Joanna like?"]
+    no = ["When did Caroline have a picnic?", "What was my personal best time?", "What is Evan's favorite food?",
+          "Is somebody manyfold?", "Which bus did I take?"]
+    assert all(search.is_ledger_query(q) for q in yes)
+    assert not any(search.is_ledger_query(q) for q in no)
+
+
+def _unit(*xs):
+    import numpy as np
+    v = np.array(xs, dtype=np.float32)
+    return v / np.linalg.norm(v)
+
+
+def test_build_ledger_merges_repeats_and_sorts_by_date():
+    rows = [_row(0, "a", kind="note", day=27, text="The user owns a Korg B1 digital piano."),
+            _row(1, "a", kind="note", day=5, text="The user has a Korg B1 piano."),
+            _row(2, "a", kind="note", day=12, text="The user has a Pearl Export drum set."),
+            _row(3, "a", text="raw message"),
+            _row(4, "a", kind="summary", day=1, text="They talked."),
+            _row(5, "a", kind="note", day=20, text="The user is considering selling the drum set.")]
+    idx = SimpleNamespace(rows=rows)
+    vec = {rows[0].id: _unit(1, 0, 0), rows[1].id: _unit(0.99, 0.1, 0), rows[2].id: _unit(0, 1, 0), rows[5].id: _unit(0, 0.6, 0.8)}
+    text = search.build_ledger(idx, [0, 3, 2, 5, 1, 4], vec)
+    lines = text.split("\n")
+    assert lines[0].startswith("[timeline · 3 memory notes")
+    assert lines[1:] == ["- 2023-05-05 [also mentioned 2023-05-27]: The user owns a Korg B1 digital piano.",
+                         "- 2023-05-12: The user has a Pearl Export drum set.",
+                         "- 2023-05-20: The user is considering selling the drum set."]
+    assert search.build_ledger(idx, [3, 4, 0], vec) is None   # 不到两条笔记不出清单
+
+
+def test_box_puts_lead_first_and_counts_it(monkeypatch):
+    rows = [_row(i, "a", text=f"t{i}") for i in range(5)]
+    idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 0)
+    lead = [{"id": "timeline:x", "content": "[timeline]\n- 2023-05-01: a", "text": "[timeline]\n- 2023-05-01: a", "score": 1.0}]
+    out = search._box(idx, [0, 1, 2, 3, 4], {}, 3, None, lead)
+    assert [it["id"] for it in out] == ["timeline:x", rows[0].id, rows[1].id]

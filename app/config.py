@@ -75,7 +75,12 @@ EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"
 # 0 = 检索时把笔记当不存在（索引、向量都只看原文）。同一个库开两个实例，一个带笔记一个不带，就是成对对照，不用再入一遍库
 NOTES_IN_SEARCH = os.environ.get("NOTES_IN_SEARCH", "1") != "0"
 # >0：返回的 top_k 条里笔记最多占这么多条，超出的笔记跳过、让给原文（10-06 对照：不限时 100 条里约 40 条是笔记，原文证据覆盖掉了几个点）
-NOTES_MAX_RETURNED = _int("NOTES_MAX_RETURNED", 0)   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+NOTES_MAX_RETURNED = _int("NOTES_MAX_RETURNED", 0)
+# 时间线清单（10-07）：问「一共几次 / 有哪些 / 怎么变的 / 总结」这类题时，把重排窗口里的笔记合并近重复、按日期从早到晚排成一条，
+# 作为第一条返回。不调模型、不下结论，只是把散在 100 条里的同类事实摆成一张表。默认关
+LEDGER_ENABLED = os.environ.get("LEDGER_ENABLED", "") == "1"
+LEDGER_MAX_NOTES = _int("LEDGER_MAX_NOTES", 60)        # 从重排后的顺序里取前多少条笔记进清单
+LEDGER_DEDUP_COS = _float("LEDGER_DEDUP_COS", 0.93)    # 两条笔记向量余弦 ≥ 这个值算同一件事，合并成一行   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
