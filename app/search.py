@@ -16,7 +16,7 @@ from .embed import embed_query
 from .httpclient import usage
 from .rerank import rerank
 from .index import Row, UserIndex, get_index
-from .textutil import count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
+from .textutil import WEEKDAYS, count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
 
 log = logging.getLogger("aml.search")
 
@@ -454,6 +454,21 @@ def build_ledger(idx: UserIndex, order: list[int], vectors: dict[str, np.ndarray
     return head + "\n" + "\n".join(lines)
 
 
+def build_span(idx: UserIndex) -> str | None:
+    """记忆时间跨度：原文段里最早、最近的时间和会话数。只看库里的数据，与查询无关。"""
+    ts = [r.ts_value for r in idx.rows if r.kind == "msg" and r.ts_value is not None]
+    if not ts:
+        return None
+    lo, hi = min(ts), max(ts)
+    sessions = len({r.session_id for r in idx.rows if r.kind == "msg"})
+
+    def d(t: datetime) -> str:
+        return f"{t.strftime('%Y-%m-%d')} ({WEEKDAYS[t.weekday()]})"
+
+    return (f"[memory span] The conversations on record run from {d(lo)} to {d(hi)}; "
+            f"the most recent conversation is on {d(hi)}. ({sessions} conversation threads, {len(ts)} dated messages)")
+
+
 def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None,
          lead: list[dict] | None = None) -> list[dict]:
     out: list[dict] = []
@@ -551,6 +566,10 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
         trace["pre_rerank"] = [idx.rows[p].id for p in order]    # 实际交给重排的顺序（开第二跳时与 fused 不同）
     order = await _reranked(idx, q, order, scores, must, trace)
     lead: list[dict] = []
+    if config.SPAN_ENABLED:
+        span = build_span(idx)
+        if span:
+            lead.append({"id": "span:" + idx.user_id[-24:], "content": span, "text": span, "score": 1.0})
     if config.LEDGER_ENABLED and config.NOTES_IN_SEARCH and is_ledger_query(query):
         note_ids = [idx.rows[p].id for p in order if idx.rows[p].kind == "note"][: config.LEDGER_MAX_NOTES]
         try:
@@ -561,8 +580,8 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             text = None
         if text:
             import hashlib  # noqa: PLC0415
-            lead = [{"id": "timeline:" + hashlib.sha256(text.encode()).hexdigest()[:12], "content": text, "text": text,
-                     "score": 1.0}]
+            lead.append({"id": "timeline:" + hashlib.sha256(text.encode()).hexdigest()[:12], "content": text, "text": text,
+                         "score": 1.0})
         if trace is not None:
             trace["ledger"] = text
 

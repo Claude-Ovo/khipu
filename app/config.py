@@ -80,7 +80,10 @@ NOTES_MAX_RETURNED = _int("NOTES_MAX_RETURNED", 0)
 # 作为第一条返回。不调模型、不下结论，只是把散在 100 条里的同类事实摆成一张表。默认关
 LEDGER_ENABLED = os.environ.get("LEDGER_ENABLED", "") == "1"
 LEDGER_MAX_NOTES = _int("LEDGER_MAX_NOTES", 60)        # 从重排后的顺序里取前多少条笔记进清单
-LEDGER_DEDUP_COS = _float("LEDGER_DEDUP_COS", 0.93)    # 两条笔记向量余弦 ≥ 这个值算同一件事，合并成一行   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+LEDGER_DEDUP_COS = _float("LEDGER_DEDUP_COS", 0.93)    # 两条笔记向量余弦 ≥ 这个值算同一件事，合并成一行
+# 记忆时间跨度锚点（10-07）：平台答题模板不带提问日期，问「过去一个月」「几个月前」时答题模型不知道现在是哪天。
+# 每次检索在最前面放一条：记忆里最早、最近的对话日期和会话数。只陈述记忆里已有的事实。默认关
+SPAN_ENABLED = os.environ.get("SPAN_ENABLED", "") == "1"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)
