@@ -441,6 +441,15 @@ def test_build_ledger_merges_repeats_and_sorts_by_date():
     assert search.build_ledger(idx, [3, 4, 0], vec) is None   # 不到两条笔记不出清单
 
 
+def test_build_span_uses_raw_messages_only():
+    rows = [_row(0, "a", day=3), _row(1, "a", day=9), _row(2, "b", day=5), _row(3, "b", kind="note", day=30)]
+    rows[0].ts_value = None
+    text = search.build_span(SimpleNamespace(rows=rows))
+    assert text == ("[memory span] The conversations on record run from 2023-05-05 (Fri) to 2023-05-09 (Tue); "
+                    "the most recent conversation is on 2023-05-09 (Tue). (2 conversation threads, 2 dated messages)")
+    assert search.build_span(SimpleNamespace(rows=[_row(0, "a", kind="note")])) is None
+
+
 def test_box_puts_lead_first_and_counts_it(monkeypatch):
     rows = [_row(i, "a", text=f"t{i}") for i in range(5)]
     idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})
