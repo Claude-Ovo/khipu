@@ -177,3 +177,12 @@ Reading: on both sets the temporal questions move the most (LME 8 → 11–13, L
 Combined, cap 20 vs raw over 220 questions: +33 / −23 discordant (sign test p ≈ 0.23).
 
 Cost of this round: AiHubMix $0.18; Bailian ≈ ¥17 (LME dumps ¥6.2, LME answers ¥2.9, LoCoMo dumps ¥4.8, LoCoMo answers ¥3.2).
+
+## Two Search-side ideas that did not help (10-07)
+
+Both on the same stored data, compared per question with the `cap 20` arm; both stay off (`LEDGER_ENABLED`, `SPAN_ENABLED`).
+
+- **Timeline ledger** (`1c7d…`/`d9ffe8d`): routed aggregation/synthesis questions get one composite item first — notes from the reranked order, near-duplicates merged (cosine ≥ 0.93), one dated line per fact, oldest first. LME 77 routed questions: 47 vs 48 (+4/−5); LoCoMo 23 routed: 11 vs 12. Reading the ledgers: 57 lines for "how many instruments do I own", mixing assistant suggestions and unrelated people; paraphrased repeats survive the 0.93 merge; the errors are judgement calls (a drum set the user is selling, a ukulele they are considering) that ordering does not fix. Cost ¥3.8.
+- **Memory-span anchor** (`23461fa`): one item stating the earliest and latest conversation dates, because the answer templates carry no question date (on LME the question is asked on the last session's day for 97 % of non-temporal questions; temporal-reasoning median gap 4 days). LME 100: 60 vs 61 (+5/−6); the flips are spread over questions with no relative-time component, i.e. noise. Cost ¥4.5.
+
+Noise note: changing one line of context flips about 10 % of answers at temperature 0 with this proxy answer model, so effects under about 5 points per 100 questions are not measurable here.
