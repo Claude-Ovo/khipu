@@ -629,6 +629,16 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
         trace["pre_rerank"] = [idx.rows[p].id for p in order]    # 实际交给重排的顺序（开第二跳时与 fused 不同）
     order = await _reranked(idx, q, order, scores, must, trace)
     lead: list[dict] = []
+    if config.CHAIN_ENABLED and is_ledger_query(query):
+        # 时间链：重排后的前 CHAIN_TOPN 条（原文和笔记都算）按返回时的样子交给模型整理；问题只给 query 本身，不带选项
+        from . import chain  # noqa: PLC0415  延迟导入：抽取模块要连库，不开链的实例不碰它
+        text = await chain.build_chain(query, [_render(idx, idx.rows[p]) for p in order[: config.CHAIN_TOPN]])
+        if text:
+            import hashlib  # noqa: PLC0415
+            lead.append({"id": "chain:" + hashlib.sha256(text.encode()).hexdigest()[:12], "content": text, "text": text,
+                         "score": 1.0})
+        if trace is not None:
+            trace["chain"] = text
     if config.SPAN_ENABLED:
         span = build_span(idx)
         if span:

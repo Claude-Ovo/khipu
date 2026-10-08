@@ -237,11 +237,14 @@ def _notes_from(output: dict) -> list[Note]:
 
 # ---------- 调用 ----------
 
-async def _call(body: dict) -> tuple[str | None, str, int | None, int | None, str | None]:
+async def _call(body: dict, kind: str = "extract", attempts: int | None = None) -> tuple[str | None, str, int | None, int | None, str | None]:
     """返回 (回复正文, 状态, prompt_tokens, completion_tokens, 回复里报的模型名)。
-    状态 ok，或 empty:<原因>（确定性的坏结果，正文为 None）。"""
+    状态 ok，或 empty:<原因>（确定性的坏结果，正文为 None）。
+    kind 只决定计到哪个用量计数器（extract = Add 时抽取，chain = Search 时时间链），调用、重试、分类完全一样。"""
     delay = 1.0
-    for attempt in range(config.EXTRACT_ATTEMPTS):
+    count = usage.extract if kind == "extract" else usage.chain
+    attempts = attempts or config.EXTRACT_ATTEMPTS
+    for attempt in range(attempts):
         if config.EXTRACT_TOKEN_CAP and usage.extract_tokens() >= config.EXTRACT_TOKEN_CAP:
             raise ExtractUnavailable(f"token cap {config.EXTRACT_TOKEN_CAP} reached")
         t0 = time.monotonic()
@@ -253,12 +256,12 @@ async def _call(body: dict) -> tuple[str | None, str, int | None, int | None, st
             if r.status_code == 408 or retryable_status(r.status_code):
                 raise _Retry(f"status {r.status_code}")
             if r.status_code in (401, 402, 404):  # key 错、没钱、没有满足供应商限制的端点：重试不会好，人来处理
-                usage.extract(False, None, None, ms)
-                log.error("extract %s: %s", r.status_code, r.text[:300])
+                count(False, None, None, ms)
+                log.error("%s %s: %s", kind, r.status_code, r.text[:300])
                 raise ExtractUnavailable(f"status {r.status_code}")
             if r.status_code >= 400:  # 400 / 403 内容审核 / 413 太长：输入本身的问题，按空结果收下
-                usage.extract(False, None, None, ms)
-                log.warning("extract %s, keeping empty: %s", r.status_code, r.text[:300])
+                count(False, None, None, ms)
+                log.warning("%s %s, keeping empty: %s", kind, r.status_code, r.text[:300])
                 return None, f"empty:http{r.status_code}", None, None, None
             payload = r.json()
             choices = payload.get("choices") if isinstance(payload, dict) else None
@@ -267,18 +270,18 @@ async def _call(body: dict) -> tuple[str | None, str, int | None, int | None, st
             content = choices[0]["message"].get("content") or ""
             u = payload.get("usage") or {}
             pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
-            usage.extract(True, pt, ct, ms)
+            count(True, pt, ct, ms)
             model = payload.get("model")
             if not (isinstance(model, str) and "gpt-4o-mini" in model):  # 中转换了模型：只记日志，结果照收，事后查
-                log.error("extract: relay answered with model %r, expected %s", model, config.EXTRACT_MODEL)
-            log.info("extract ok in=%s out=%s %dms attempt=%d finish=%s model=%s", pt, ct, ms, attempt + 1,
+                log.error("%s: relay answered with model %r, expected %s", kind, model, config.EXTRACT_MODEL)
+            log.info("%s ok in=%s out=%s %dms attempt=%d finish=%s model=%s", kind, pt, ct, ms, attempt + 1,
                      choices[0].get("finish_reason"), model)
             return content, "ok", pt, ct, model
         except (httpx.HTTPError, _Retry, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
             ms = ms or int((time.monotonic() - t0) * 1000)
-            usage.extract(False, None, None, ms)
-            log.warning("extract attempt %d failed after %dms: %s %s", attempt + 1, ms, type(e).__name__, e)
-            if attempt == config.EXTRACT_ATTEMPTS - 1:
+            count(False, None, None, ms)
+            log.warning("%s attempt %d failed after %dms: %s %s", kind, attempt + 1, ms, type(e).__name__, e)
+            if attempt == attempts - 1:
                 raise ExtractUnavailable(f"{type(e).__name__}: {e}") from e
             await asyncio.sleep(delay)
             delay *= 2

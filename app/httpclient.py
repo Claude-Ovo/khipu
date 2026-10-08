@@ -91,6 +91,10 @@ class _Usage:
         self.extract_prompt_tokens = self.extract_completion_tokens = 0
         self.extract_cache_hits = 0   # 命中缓存、没花钱的窗
         self.extract_empty = 0        # 模型给了确定性的坏结果（400/内容审核/解析不了），按空结果收下的窗
+        self.chain_calls = self.chain_ok = self.chain_failed = self.chain_ms = 0   # Search 时的时间链（app/chain.py）
+        self.chain_prompt_tokens = self.chain_completion_tokens = 0
+        self.chain_cache_hits = 0
+        self.chain_skips = 0          # 该给链却没给成（没 key、调不到模型、超时、解析不了）的检索次数
 
     def embed(self, ok: bool, tokens: int | None, ms: int) -> None:
         with self._lock:
@@ -131,9 +135,29 @@ class _Usage:
         with self._lock:
             self.extract_empty += 1
 
-    def extract_tokens(self) -> int:
+    def chain(self, ok: bool, prompt_tokens: int | None, completion_tokens: int | None, ms: int) -> None:
         with self._lock:
-            return self.extract_prompt_tokens + self.extract_completion_tokens
+            self.chain_calls += 1
+            self.chain_ms += ms
+            self.chain_prompt_tokens += prompt_tokens or 0
+            self.chain_completion_tokens += completion_tokens or 0
+            if ok:
+                self.chain_ok += 1
+            else:
+                self.chain_failed += 1
+
+    def chain_cached(self) -> None:
+        with self._lock:
+            self.chain_cache_hits += 1
+
+    def chain_skipped(self) -> None:
+        with self._lock:
+            self.chain_skips += 1
+
+    def extract_tokens(self) -> int:
+        """抽取 + 时间链在本进程花掉的 token 总数（EXTRACT_TOKEN_CAP 管的是两者之和）。"""
+        with self._lock:
+            return self.extract_prompt_tokens + self.extract_completion_tokens + self.chain_prompt_tokens + self.chain_completion_tokens
 
     def rerank_gave_up(self, timeout: bool) -> None:
         with self._lock:
@@ -156,6 +180,10 @@ class _Usage:
                             "completion_tokens": self.extract_completion_tokens,
                             "avg_ms": round(self.extract_ms / self.extract_calls) if self.extract_calls else 0,
                             "cache_hits": self.extract_cache_hits, "empty": self.extract_empty},
+                "chain": {"calls": self.chain_calls, "ok": self.chain_ok, "failed": self.chain_failed,
+                          "prompt_tokens": self.chain_prompt_tokens, "completion_tokens": self.chain_completion_tokens,
+                          "avg_ms": round(self.chain_ms / self.chain_calls) if self.chain_calls else 0,
+                          "cache_hits": self.chain_cache_hits, "skipped": self.chain_skips},
             }
 
 
