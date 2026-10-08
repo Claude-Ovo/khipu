@@ -202,3 +202,13 @@ LME 77 routed: 47 vs cap 20 48 (+5/−6). LoCoMo 23 routed: 10 vs 12 (+1/−3). 
 Why it might work where the ledger did not: the ledger merged by vector cosine and listed every note, so paraphrased repeats survived and assistant suggestions and other people's events came along; the misses on counting questions were judgement calls (a drum set being sold, a ukulele under consideration). The chain asks the model to make exactly those calls, and only those.
 
 Routing rate: LongMemEval-S 194/500 (multi-session 76, temporal 55, knowledge-update 42), LoCoMo 273/1986. Smoke: one LME question, 4.2 s, ¥0.04 of Bailian plus the model call. Full-scale estimate at 30 % routed: ~2,900 calls × (8k in + 0.8k out) ≈ $5.
+
+Result (10-09, same 77 + 23 routed questions, paired with `cap 20`):
+
+| arm | LME 77 | vs cap 20 | KU 18 | MS 36 | TR 23 | LoCoMo 23 | vs cap 20 |
+|---|---|---|---|---|---|---|---|
+| cap 20 | 48 | | 18 | 20 | 10 | 12 | |
+| chain c1 | 47 | +6 / −7 | 17 | 18 | 12 | 11 | +0 / −1 |
+| chain c2 (scan step, softer header) | 47 | +6 / −7 | 17 | 19 | 11 | – | |
+
+Every LME question got a chain (77/77), 4.3 s mean latency, 3 entries median. Reading the flips: the chain is usually right (bakes 4/4, instruments 4 owned + drum set for sale + ukulele considered, bereavement both mentions) and the proxy answer model still miscounts with it in front; where the chain is wrong it is wrong by omission, and a confident three-line list at rank 1 then outweighs the originals ("How many movie festivals": the Seattle mention sat at candidate #42 of 50 and gpt-4o-mini left it out in both prompt versions, c1 folding it into the Portland entry; the answer went from "four" to "three"). Chain vs raw is +12/−5, but cap 20 already captures that. Cost of both rounds ≈ ¥14 Bailian + ≈ $0.5 relay. Stays off; the code remains behind `CHAIN_ENABLED` with the prompt and parameters declared, in case the organizer's answer to the 10-09 compliance question and a stronger reader change the picture.

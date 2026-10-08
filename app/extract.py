@@ -222,11 +222,12 @@ def _cache_get(sha: str) -> dict | None:
     return row[0] if row else None
 
 
-def _cache_put(sha: str, output: dict, status: str, prompt_tokens: int | None, completion_tokens: int | None) -> None:
+def _cache_put(sha: str, output: dict, status: str, prompt_tokens: int | None, completion_tokens: int | None,
+               version: str | None = None) -> None:
     with pool.connection() as conn:
         conn.execute("INSERT INTO extract_cache (input_sha, model, prompt_version, output, status, prompt_tokens, "
                      "completion_tokens) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (input_sha) DO NOTHING",
-                     (sha, config.EXTRACT_MODEL, PROMPT_VERSION, json.dumps(output, ensure_ascii=False), status,
+                     (sha, config.EXTRACT_MODEL, version or PROMPT_VERSION, json.dumps(output, ensure_ascii=False), status,
                       prompt_tokens, completion_tokens))
         conn.commit()
 
