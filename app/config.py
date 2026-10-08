@@ -83,7 +83,15 @@ LEDGER_MAX_NOTES = _int("LEDGER_MAX_NOTES", 60)        # 从重排后的顺序�
 LEDGER_DEDUP_COS = _float("LEDGER_DEDUP_COS", 0.93)    # 两条笔记向量余弦 ≥ 这个值算同一件事，合并成一行
 # 记忆时间跨度锚点（10-07）：平台答题模板不带提问日期，问「过去一个月」「几个月前」时答题模型不知道现在是哪天。
 # 每次检索在最前面放一条：记忆里最早、最近的对话日期和会话数。只陈述记忆里已有的事实。默认关
-SPAN_ENABLED = os.environ.get("SPAN_ENABLED", "") == "1"   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
+SPAN_ENABLED = os.environ.get("SPAN_ENABLED", "") == "1"
+# 整部历史（10-08）：问「一共/有哪些/规律/总结」这类题时，前 HISTORY_HEAD 条照常给精准命中，剩下的名额按时间顺序
+# 把这个用户的原文切成会话块填满，总量到 HISTORY_BUDGET_TOKENS 为止（平台答题输入上限 117,760）。
+# 依据：LoCoMo 一段对话约 18k token、LME 一题约 102k、平台平均约 50k，大多数用户的整部记忆放得下；top-k 捞片段覆盖不到「全部」。
+# 放不下时按与问题的词重叠丢掉最不相关的块。不调模型。默认关
+HISTORY_ENABLED = os.environ.get("HISTORY_ENABLED", "") == "1"
+HISTORY_HEAD = _int("HISTORY_HEAD", 30)
+HISTORY_BUDGET_TOKENS = _int("HISTORY_BUDGET_TOKENS", 100000)
+HISTORY_BLOCK_TOKENS = _int("HISTORY_BLOCK_TOKENS", 1200)   # 会话块的最小目标大小；历史太长时按剩余名额自动放大   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
 
 # 切分
 SEGMENT_MAX_TOKENS = _int("SEGMENT_MAX_TOKENS", 350)

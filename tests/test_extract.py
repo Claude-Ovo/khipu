@@ -450,6 +450,42 @@ def test_build_span_uses_raw_messages_only():
     assert search.build_span(SimpleNamespace(rows=[_row(0, "a", kind="note")])) is None
 
 
+def _hist_idx(rows):
+    from app.textutil import tokenize
+    return SimpleNamespace(rows=rows, session_label={"a": "session 1", "b": "session 2"}, speakers=frozenset(), token_cache={},
+                           id_to_pos={r.id: r.pos for r in rows}, token_sets=[set(tokenize(r.text)) for r in rows])
+
+
+def test_history_blocks_chronological_and_capped():
+    rows = [_row(0, "b", day=9, text="later session line one"), _row(1, "b", day=9, text="later session line two"),
+            _row(2, "a", day=3, text="early session about cats"), _row(3, "a", day=3, text="early session about dogs"),
+            _row(4, "a", kind="note", day=3, text="a note that must not appear")]
+    idx = _hist_idx(rows)
+    out = search.build_history_blocks(idx, slots=10, budget=10000, q_tokens={"cats"}, block_tokens=1000)
+    assert [it["id"] for it in out] == ["a#history1", "b#history2"]          # 按会话时间排，不按存储顺序
+    assert out[0]["content"].startswith("[history · session 1 · 2023-05-03]\n")
+    assert "about cats" in out[0]["content"] and "about dogs" in out[0]["content"]
+    assert "note that must not" not in out[0]["content"] + out[1]["content"]
+    assert out[0]["created_at"] == "2023-05-03T14:02:00Z"
+    # 只剩一个名额：留与问题词重叠多的那块
+    out = search.build_history_blocks(idx, slots=1, budget=10000, q_tokens={"cats"}, block_tokens=1)
+    assert [it["id"] for it in out] == ["a#history1"]
+    # 预算不够：同样丢不相关的
+    out = search.build_history_blocks(idx, slots=10, budget=40, q_tokens={"later"}, block_tokens=1)
+    assert [it["id"] for it in out] == ["b#history1"]
+    assert search.build_history_blocks(idx, 0, 10000, set(), 1000) == []
+
+
+def test_history_blocks_split_long_sessions_and_scale_block_size():
+    rows = [_row(i, "a", day=1, text=f"line {i} " + "word " * 40) for i in range(12)]
+    idx = _hist_idx(rows)
+    small = search.build_history_blocks(idx, slots=100, budget=100000, q_tokens=set(), block_tokens=60)
+    assert len(small) > 1 and all(it["id"].startswith("a#history") for it in small)
+    assert "".join(it["content"] for it in small).count("line ") == 12
+    few = search.build_history_blocks(idx, slots=2, budget=100000, q_tokens=set(), block_tokens=60)
+    assert len(few) <= 2 and "".join(it["content"] for it in few).count("line ") == 12   # 名额少就放大块，不丢内容
+
+
 def test_box_puts_lead_first_and_counts_it(monkeypatch):
     rows = [_row(i, "a", text=f"t{i}") for i in range(5)]
     idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})
