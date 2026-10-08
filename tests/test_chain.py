@@ -52,7 +52,7 @@ def _offline(monkeypatch):
     monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 0)
     monkeypatch.setattr(config, "CHAIN_TIMEOUT_S", 5)
     monkeypatch.setattr(chain, "_cache_get", lambda sha: store[sha][0] if sha in store else None)
-    monkeypatch.setattr(chain, "_cache_put", lambda sha, out, status, pt, ct: store.setdefault(sha, (out, status)))
+    monkeypatch.setattr(chain, "_cache_put", lambda sha, out, status, pt, ct, version=None: store.setdefault(sha, (out, status, version)))
     monkeypatch.setattr(extract, "extract_sem", asyncio.Semaphore(4))
     monkeypatch.setattr(httpclient, "usage", httpclient._Usage())
     monkeypatch.setattr(extract, "usage", httpclient.usage)

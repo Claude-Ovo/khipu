@@ -185,7 +185,7 @@ async def build_chain(query: str, lines: list[str]) -> str | None:
             if status != "ok":
                 log.warning("chain %s kept empty (%s)", sha[:12], status)
             await asyncio.to_thread(_cache_put, sha, {"items": [ev.__dict__ for ev in events], "raw": content, "model": model},
-                                    status, pt, ct)
+                                    status, pt, ct, PROMPT_VERSION)
     except (ExtractUnavailable, asyncio.TimeoutError) as e:
         usage.chain_skipped()
         log.warning("chain skipped: %s %s", type(e).__name__, e)
