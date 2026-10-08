@@ -29,7 +29,14 @@ RERANK_TIMEOUT_S=45
 RERANK_ATTEMPT_TIMEOUT_S=20
 SEARCH_TIMEOUT_S=30
 INDEX_CACHE_USERS=16
+# B3（10-09 定稿）：Add 时 gpt-4o-mini 抽取，返回里笔记最多 20 条，遗忘指令提前。中转 key 在 /srv/aml/.extract（unit 里单独加载）
+EXTRACT_ENABLED=1
+NOTES_MAX_RETURNED=20
+FORGET_ENABLED=1
+# 彩排期间的保险：本进程抽取+链累计超过 300 万 token 就停（Add 回 503）。Full 前改成 0，额度交给中转站的 key 配额管
+EXTRACT_TOKEN_CAP=3000000
 ENV
+[ -s /srv/aml/.extract ] || { echo "!! /srv/aml/.extract missing: run deploy/set-extract-key.sh first"; exit 1; }
 
 echo "== systemd aml2"
 sudo cp deploy/aml2.service /etc/systemd/system/aml2.service
