@@ -486,6 +486,28 @@ def test_history_blocks_split_long_sessions_and_scale_block_size():
     assert len(few) <= 2 and "".join(it["content"] for it in few).count("line ") == 12   # 名额少就放大块，不丢内容
 
 
+def test_looks_like_forget():
+    from app.textutil import looks_like_forget as f
+    yes = ["Please forget what I told you about my salary.", "Don't mention my ex again.", "Actually, scratch that, I never went.",
+           "Delete the note about my address.", "That's no longer true, I moved.", "把我说的工资那件事忘了吧", "以后别再提我前男友"]
+    no = ["I forgot my umbrella at the office today.", "Can you remind me what I said about the trip?", "I never liked spinach.",
+          "Delete is a key on the keyboard."]
+    assert all(f(t, "user") for t in yes)
+    assert not any(f(t, "user") for t in no)
+    assert not f(yes[0], "assistant") and not f(yes[0] * 20, "user")
+
+
+def test_insert_forgets_promotes_matching_directive_only():
+    rows = [_row(0, "a", day=1, text="My salary is 90k."), _row(1, "a", day=2, text="Forget what I told you about my salary."),
+            _row(2, "a", day=3, text="Please don't mention my cousin Tom."), _row(3, "a", day=4, text="unrelated")]
+    idx = _hist_idx(rows)
+    idx.forget_rows = [1, 2]
+    from app.textutil import tokenize
+    assert search._insert_forgets(idx, [0, 3], set(tokenize("What is my salary?"))) == [1, 0, 3]
+    assert search._insert_forgets(idx, [0, 3], set(tokenize("Where do I live?"))) == [0, 3]
+    assert search._insert_forgets(idx, [2, 0], set(tokenize("Tell me about Tom and my salary"))) == [2, 1, 0]   # 新的在前，不重复
+
+
 def test_box_puts_lead_first_and_counts_it(monkeypatch):
     rows = [_row(i, "a", text=f"t{i}") for i in range(5)]
     idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})

@@ -14,7 +14,7 @@ from rank_bm25 import BM25Okapi
 
 from . import config
 from .db import pool
-from .textutil import date_strings, extract_names, same_person, tokenize
+from .textutil import date_strings, extract_names, looks_like_forget, same_person, tokenize
 
 
 _ALIAS_WORD_RX = re.compile(r"\w+")
@@ -82,6 +82,7 @@ class UserIndex:
     lower_texts: list[str] = field(default_factory=list)
     token_cache: dict[int, int] = field(default_factory=dict)   # 行号 -> 渲染后的 token 数（search._rendered_tokens 按需填）
     speakers: frozenset[str] = frozenset()   # 原文里出现过的说话人名（LoCoMo 这类有名字的对话）；笔记的主语是其中之一时挂到他名下渲染
+    forget_rows: list[int] = field(default_factory=list)   # 遗忘/撤回指令的原文段（建索引时按正则认，不进库）
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()
@@ -264,7 +265,8 @@ def _build(user_id: str, version: int) -> UserIndex:
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
                      {r.id: r.pos for r in rows}, version, token_sets,
                      alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts,
-                     speakers=frozenset(r.speaker_name for r in rows if r.kind == "msg" and r.speaker_name))
+                     speakers=frozenset(r.speaker_name for r in rows if r.kind == "msg" and r.speaker_name),
+                     forget_rows=[r.pos for r in rows if r.kind == "msg" and looks_like_forget(r.text, r.role)])
 
 
 def get_index(user_id: str) -> UserIndex:
