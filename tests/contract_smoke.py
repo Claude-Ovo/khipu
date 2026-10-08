@@ -20,6 +20,11 @@ MAY8 = 1683504000000  # 2023-05-08 00:00 UTC
 fails = 0
 
 
+def raw(items):
+    """B3 起 Search 会把抽出的笔记和会话摘要一起返回；数条数的检查只数原文段（笔记带固定标记）。"""
+    return [it for it in items if "(memory note)" not in it["content"] and "(conversation summary)" not in it["content"]]
+
+
 def check(cond: bool, msg: str) -> None:
     global fails
     print(("ok   " if cond else "FAIL ") + msg)
@@ -87,7 +92,7 @@ with ThreadPoolExecutor(8) as ex:
     rs = list(ex.map(lambda _: c.post("/add", json=same), range(5)))
 check(all(x.status_code == 200 for x in rs) and len({json.dumps(x.json(), sort_keys=True) for x in rs}) == 1, "5 concurrent identical Adds -> all 200, identical bodies")
 d = c.post("/search", json={"query": "same payload", "user_id": U2, "top_k": 100}).json()["data"]
-check(len(d) == 1, f"...and exactly one segment stored ({len(d)})")
+check(len(raw(d)) == 1, f"...and exactly one segment stored ({len(raw(d))} raw, {len(d)} with notes)")
 
 diff = [dict(same, request_id=f"{U2}:chunk-1", messages=[{"role": "user", "content": f"variant {i}"}]) for i in range(4)]
 with ThreadPoolExecutor(8) as ex:
@@ -99,14 +104,14 @@ seqs = [dict(same, request_id=f"{U2}:seq-{i}", messages=[{"role": "user", "conte
 with ThreadPoolExecutor(8) as ex:
     rs = list(ex.map(lambda b: c.post("/add", json=b), seqs))
 d = c.post("/search", json={"query": "parallel message", "user_id": U2, "top_k": 100}).json()["data"]
-check(all(x.status_code == 200 for x in rs) and sum("parallel message" in it["content"] for it in d) == 6,
+check(all(x.status_code == 200 for x in rs) and sum("parallel message" in it["content"] for it in raw(d)) == 6,
       "6 concurrent Adds to one session -> all 6 messages stored (no seq collision)")
 
 other = {"request_id": f"{U}:other:chunk-0", "user_id": f"{U}:other-user", "session_id": S,
          "messages": [{"role": "user", "content": "Different user, same session id."}]}
 r = c.post("/add", json=other)
 d = c.post("/search", json={"query": "different user", "user_id": f"{U}:other-user", "top_k": 100}).json()["data"]
-check(r.status_code == 200 and len(d) == 1, "same session_id under another user_id does not collide")
+check(r.status_code == 200 and len(raw(d)) == 1, "same session_id under another user_id does not collide")
 
 r = c.post("/search", json={"query": "meeting on 2023-02-30 or 2023-99-01?", "user_id": U, "top_k": 100})
 check(r.status_code == 200, f"invalid calendar dates in query -> still 200 (got {r.status_code})")
