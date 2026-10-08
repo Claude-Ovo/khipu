@@ -469,6 +469,56 @@ def build_span(idx: UserIndex) -> str | None:
             f"the most recent conversation is on {d(hi)}. ({sessions} conversation threads, {len(ts)} dated messages)")
 
 
+def build_history_blocks(idx: UserIndex, slots: int, budget: int, q_tokens: set[str], block_tokens: int) -> list[dict]:
+    """整部历史：原文段按存储顺序（会话、序号）切成块，每块不超过 block_tokens（历史太长时按名额放大），
+    块按会话时间从早到晚排。超出预算时先丢与问题词重叠最少的块，剩下的仍按时间排。只用库里的行，结果确定。"""
+    if slots <= 0 or budget <= 0:
+        return []
+    msgs = [r for r in idx.rows if r.kind == "msg"]
+    if not msgs:
+        return []
+    total = sum(_rendered_tokens(idx, r.pos) for r in msgs)
+    size = max(block_tokens, -(-total // slots))   # 向上取整，保证块数不超过名额
+    blocks: list[list[Row]] = []
+    cur: list[Row] = []
+    used = 0
+    for r in msgs:
+        t = _rendered_tokens(idx, r.pos)
+        if cur and (r.session_id != cur[-1].session_id or used + t > size):
+            blocks.append(cur)
+            cur, used = [], 0
+        cur.append(r)
+        used += t
+    if cur:
+        blocks.append(cur)
+
+    def first_ts(b: list[Row]) -> tuple:
+        ts = [r.ts_value for r in b if r.ts_value is not None]
+        return (not ts, min(ts).timestamp() if ts else 0.0, b[0].pos)
+
+    def relevance(b: list[Row]) -> int:
+        return sum(len(idx.token_sets[r.pos] & q_tokens) for r in b)
+
+    def tokens(b: list[Row]) -> int:
+        return sum(_rendered_tokens(idx, r.pos) for r in b) + 16
+
+    keep = sorted(blocks, key=first_ts)
+    while keep and (len(keep) > slots or sum(tokens(b) for b in keep) > budget):
+        keep.remove(min(keep, key=lambda b: (relevance(b), -first_ts(b)[1])))  # 相关度相同时先丢更早的
+    out = []
+    for n, b in enumerate(keep, start=1):
+        ts = [r.ts_value for r in b if r.ts_value is not None]
+        label = idx.session_label.get(b[0].session_id, "session ?")
+        when = f" · {min(ts).strftime('%Y-%m-%d')}" if ts else ""
+        content = f"[history · {label}{when}]\n" + "\n".join(_render(idx, r) for r in b)
+        item = {"id": f"{b[0].session_id}#history{n}", "content": content, "text": content, "score": 0.0}
+        ca = created_at_value(min(ts), "datetime") if ts else None
+        if ca:
+            item["created_at"] = ca
+        out.append(item)
+    return out
+
+
 def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None,
          lead: list[dict] | None = None) -> list[dict]:
     out: list[dict] = []
@@ -593,6 +643,14 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
             scores.setdefault(p, 0.0)
         if trace is not None:
             trace["pre_box"] = [idx.rows[p].id for p in o[: 3 * k]]   # 规矩口袋和邻居插入之后、装箱之前
+        if config.HISTORY_ENABLED and is_ledger_query(query):
+            head = _box(idx, o, scores, min(k, config.HISTORY_HEAD), trace, lead)
+            used = sum(count_tokens(it["content"]) for it in head)
+            blocks = build_history_blocks(idx, k - len(head), config.HISTORY_BUDGET_TOKENS - used, set(tokenize(q)),
+                                          config.HISTORY_BLOCK_TOKENS)
+            if trace is not None:
+                trace["history_blocks"] = len(blocks)
+            return head + blocks
         return _box(idx, o, scores, k, trace, lead)
 
     return await asyncio.to_thread(finish)
