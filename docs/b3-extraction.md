@@ -186,3 +186,11 @@ Both on the same stored data, compared per question with the `cap 20` arm; both 
 - **Memory-span anchor** (`23461fa`): one item stating the earliest and latest conversation dates, because the answer templates carry no question date (on LME the question is asked on the last session's day for 97 % of non-temporal questions; temporal-reasoning median gap 4 days). LME 100: 60 vs 61 (+5/−6); the flips are spread over questions with no relative-time component, i.e. noise. Cost ¥4.5.
 
 Noise note: changing one line of context flips about 10 % of answers at temperature 0 with this proxy answer model, so effects under about 5 points per 100 questions are not measurable here.
+
+## Whole-history fill (10-08): no gain with this answer proxy
+
+`HISTORY_ENABLED`: routed aggregation/synthesis questions keep 30 precise hits, then the user's raw messages in chronological session blocks up to 100k tokens (the platform's answer input cap is 117,760; LME-S haystacks are ~102k, LoCoMo conversations ~18k). The first context had 92 items / 98k tokens with all three gold turns inside.
+
+LME 77 routed: 47 vs cap 20 48 (+5/−6). LoCoMo 23 routed: 10 vs 12 (+1/−3). The answer model counted differently with the whole history in front of it, not better: "three" where cap-20 had listed the four events by name. With qwen-plus as the stand-in reader, more context did not turn into more correct counts. Cost ¥12. Stays off.
+
+`FORGET_ENABLED` (forget/retract directives promoted to rank 1 on overlapping questions) cannot be measured locally: LongMemEval has no such directives (63 of 122k user turns match the detector, nearly all incidental uses of "forget"). It is harmless on these sets and is a candidate for the second shot on that basis only.
