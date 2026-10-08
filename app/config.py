@@ -92,6 +92,16 @@ HISTORY_ENABLED = os.environ.get("HISTORY_ENABLED", "") == "1"
 # 遗忘指令（10-08）：用户说过「把 X 忘了 / 别再提 X」，之后问到 X 时把那条指令排到第一条（textutil.looks_like_forget）。
 # 只提前不压制：压错了会把真证据弄丢。默认关
 FORGET_ENABLED = os.environ.get("FORGET_ENABLED", "") == "1"
+# 时间链（10-09）：聚合/计数/时序题（同 LEDGER 的路由）把重排后前 CHAIN_TOPN 条候选交给 gpt-4o-mini，按时间排成一条事实链
+# 作为第一条返回（app/chain.py）。调不到模型就不给这一条，Search 照常。共用 EXTRACT_* 的 key、模型、seed、TOKEN_CAP。默认关
+CHAIN_ENABLED = os.environ.get("CHAIN_ENABLED", "") == "1"
+CHAIN_TOPN = _int("CHAIN_TOPN", 50)                      # 送去整理的候选条数（重排后顺序，原文和笔记都算）
+CHAIN_LINE_TOKENS = _int("CHAIN_LINE_TOKENS", 600)       # 单条候选送去整理的上限（返回的原文不截）
+CHAIN_INPUT_TOKENS = _int("CHAIN_INPUT_TOKENS", 14000)   # 一次调用的输入上限
+CHAIN_MAX_EVENTS = _int("CHAIN_MAX_EVENTS", 40)
+CHAIN_MAX_OUTPUT_TOKENS = _int("CHAIN_MAX_OUTPUT_TOKENS", 2500)
+CHAIN_TIMEOUT_S = _float("CHAIN_TIMEOUT_S", 90)          # 整条链的总时限（含重试）；超了就不给链
+CHAIN_ATTEMPTS = _int("CHAIN_ATTEMPTS", 2)
 HISTORY_HEAD = _int("HISTORY_HEAD", 30)
 HISTORY_BUDGET_TOKENS = _int("HISTORY_BUDGET_TOKENS", 100000)
 HISTORY_BLOCK_TOKENS = _int("HISTORY_BLOCK_TOKENS", 1200)   # 会话块的最小目标大小；历史太长时按剩余名额自动放大   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）
