@@ -89,6 +89,9 @@ SPAN_ENABLED = os.environ.get("SPAN_ENABLED", "") == "1"
 # 依据：LoCoMo 一段对话约 18k token、LME 一题约 102k、平台平均约 50k，大多数用户的整部记忆放得下；top-k 捞片段覆盖不到「全部」。
 # 放不下时按与问题的词重叠丢掉最不相关的块。不调模型。默认关
 HISTORY_ENABLED = os.environ.get("HISTORY_ENABLED", "") == "1"
+# 遗忘指令（10-08）：用户说过「把 X 忘了 / 别再提 X」，之后问到 X 时把那条指令排到第一条（textutil.looks_like_forget）。
+# 只提前不压制：压错了会把真证据弄丢。默认关
+FORGET_ENABLED = os.environ.get("FORGET_ENABLED", "") == "1"
 HISTORY_HEAD = _int("HISTORY_HEAD", 30)
 HISTORY_BUDGET_TOKENS = _int("HISTORY_BUDGET_TOKENS", 100000)
 HISTORY_BLOCK_TOKENS = _int("HISTORY_BLOCK_TOKENS", 1200)   # 会话块的最小目标大小；历史太长时按剩余名额自动放大   # 同一话题键的多条事实，渲染时标出最新/已被更新（只影响 Search，不动库）

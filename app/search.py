@@ -310,6 +310,19 @@ def _with_neighbors(idx: UserIndex, order: list[int], k: int) -> list[int]:
     return order[:cut] + neighbors + [p for p in order[cut:] if p not in nset]
 
 
+def _insert_forgets(idx: UserIndex, order: list[int], q_tokens: set[str]) -> list[int]:
+    """遗忘指令里有问题的实词（不是功能词、长度 > 2）就排到最前面；几条都命中时按时间从新到旧。"""
+    terms = {t for t in q_tokens if t not in _HOP_STOP and len(t) > 2}
+    if not terms or not idx.forget_rows:
+        return order
+    hits = [p for p in idx.forget_rows if idx.token_sets[p] & terms]
+    if not hits:
+        return order
+    hits.sort(key=lambda p: (idx.rows[p].ts_value is None, -(idx.rows[p].ts_value.timestamp() if idx.rows[p].ts_value else 0), p))
+    hs = set(hits)
+    return hits + [p for p in order if p not in hs]
+
+
 def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
     """规矩口袋：固定名额，不看相似度，放在前 10 条命中之后。"""
     present = set(order)
@@ -638,6 +651,8 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
     def finish() -> list[dict]:
         # 规矩口袋、邻居、装箱都是同步 CPU 活；装箱第一次要给几千个候选算 token，放线程里别堵事件循环
         o = _insert_rules(idx, order) if is_task_request(query) else order
+        if config.FORGET_ENABLED:
+            o = _insert_forgets(idx, o, set(tokenize(query)))
         o = _with_neighbors(idx, o, k)
         for p in o:
             scores.setdefault(p, 0.0)
