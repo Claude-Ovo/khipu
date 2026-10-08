@@ -491,7 +491,8 @@ def test_looks_like_forget():
     yes = ["Please forget what I told you about my salary.", "Don't mention my ex again.", "Actually, scratch that, I never went.",
            "Delete the note about my address.", "That's no longer true, I moved.", "把我说的工资那件事忘了吧", "以后别再提我前男友"]
     no = ["I forgot my umbrella at the office today.", "Can you remind me what I said about the trip?", "I never liked spinach.",
-          "Delete is a key on the keyboard."]
+          "Delete is a key on the keyboard.", "I'm worried that I might forget some of my tasks.", "Sometimes we forget that conflict helps.",
+          "I think I'll make it from scratch.", "I'll remove the apps from my phone.", "Please don't use title case."]
     assert all(f(t, "user") for t in yes)
     assert not any(f(t, "user") for t in no)
     assert not f(yes[0], "assistant") and not f(yes[0] * 20, "user")

@@ -141,18 +141,23 @@ def looks_like_rule(text: str, role: str) -> bool:
 # 遗忘/撤回指令（10-08）：「把我说的 X 忘了」「别再提 X」「那条不算」。规矩词表里没有这些词，而且规矩只在「帮我做事」的题上才插前面；
 # 问到 X 的时候这条指令得排在最前，答题模型才知道 X 已经作废
 _FORGET = re.compile(
-    r"\b(forget|disregard|ignore|erase|delete|scratch|remove|discard)\b.{0,24}\b(what|that|about|everything|anything|my|this|it)\b|"
-    r"\b(don't|do not|never|please don't|stop)\s+(mention|bring up|refer to|talk about|use|remember)\b|"
-    r"\bpretend (that )?i never\b|\bi take (that|it) back\b|\bno longer (true|the case|valid|relevant|applies)\b|"
+    r"\b(forget|disregard|ignore|erase|delete)\b.{0,24}\b(what|that|about|everything|anything|my|this|it)\b|"
+    r"\b(don't|do not|never|please don't|stop)\s+(mention|bring up|refer to|talk about)\b|"
+    r"\bscratch that\b|\bpretend (that )?i never\b|\bi take (that|it) back\b|\bno longer (true|the case|valid|relevant|applies)\b|"
     r"\bthat('s| is) (no longer|not) (true|correct|the case)\b|\bis (now )?(outdated|obsolete)\b|"
     r"忘了|忘掉|忘记|别提|不要提|别再提|不要再提|删掉|删除|当我没说|撤回|作废|不算数", re.I)
+# 「我老是忘」「我们常常忘了」是陈述，不是指令：动词前面两三个词里有第一/第三人称主语就不算
+_FORGET_SUBJECT = re.compile(r"\b(i|we|they|people|he|she|someone|everyone)\b(\s+\S+){0,2}\s*$", re.I)
 
 
 def looks_like_forget(text: str, role: str) -> bool:
-    """用户说的、不超过 400 字、带遗忘/撤回意味的话。"""
+    """用户说的、不超过 400 字、带遗忘/撤回意味的话（LME 12 万条用户发言里约千分之一命中）。"""
     if role != "user" or len(text) > 400:
         return False
-    return bool(_FORGET.search(text))
+    for m in _FORGET.finditer(text):
+        if not _FORGET_SUBJECT.search(text[max(0, m.start() - 24):m.start()]):
+            return True
+    return False
 
 
 # ---------- 人名 ----------
