@@ -27,14 +27,16 @@ from .textutil import count_tokens
 
 log = logging.getLogger("aml.chain")
 
-PROMPT_VERSION = "c1"
+PROMPT_VERSION = "c2"   # c1 (10-09 first run): no scan step; on LME 77 the model dropped a festival mention sitting at #43 of 50
 
 SYSTEM_PROMPT = """You organize retrieved memory excerpts for a question-answering system. You are given a question and numbered excerpts from one user's past conversations, each with the date it was said and the speaker. Someone else will answer the question later, seeing both your output and the original excerpts.
 
-Return a JSON object: {"events": [...]}
+Return a JSON object: {"relevant": [...], "events": [...]}
 
-events: the excerpts that bear on the question, arranged as dated entries, oldest first, at most 40. Each entry: {"date": "...", "when": "event" or "said", "text": "...", "sources": [n, ...]}.
-- Include every distinct event, purchase, trip, activity, plan, change, decision or statement that bears on the question. Leave out excerpts that do not bear on it.
+relevant: first go through ALL the excerpts in order, including the last ones, and list the number of every excerpt that bears on the question. An excerpt bears on the question when it mentions a thing of the kind the question asks about, even in passing or as part of another topic. When in doubt, include it.
+
+events: the relevant excerpts arranged as dated entries, oldest first, at most 40. Each entry: {"date": "...", "when": "event" or "said", "text": "...", "sources": [n, ...]}.
+- Every number in "relevant" must appear in the sources of some entry. Include every distinct event, purchase, trip, activity, plan, change, decision or statement that bears on the question; leave out excerpts that do not bear on it.
 - When several excerpts refer to the same event or fact (a repeated or reworded mention, a plan and its later completion, an update to the same thing), merge them into ONE entry and list all their source numbers. Keep different events of the same kind as separate entries.
 - date: when the event happened, as "YYYY-MM-DD" (or "YYYY-MM" / "YYYY" when only that much is known), resolved from the excerpt's date and words like "yesterday", "last weekend", "two weeks ago", "next Friday"; then "when" is "event". If the excerpt does not say when the event happened, use the excerpt's own date and set "when" to "said". Use "unknown" only when there is no date at all.
 - text: one sentence stating what happened or what was said, keeping names, numbers, amounts, prices, places and titles exactly as in the excerpts. State the status as said: planned, done, cancelled, sold, returned, considering, no longer true. Name the subject (no "he", "she", "I"); write "The user" for the user.
@@ -146,8 +148,9 @@ def parse_output(content: str, n_sources: int) -> tuple[list[Event], bool]:
 
 
 def render(events: list[Event]) -> str:
-    head = (f"[timeline · {len(events)} dated entries built from the retrieved memories, oldest first; repeated mentions of the "
-            f"same event are merged into one line; it lists what the memories say and does not answer the question]")
+    head = (f"[timeline · {len(events)} dated entries found in the retrieved memories, oldest first; repeated mentions of the "
+            f"same event are merged into one line; it lists what the memories say and does not answer the question; "
+            f"the memories below are the source and may contain more]")
     lines = []
     for ev in events:
         d = f"said on {ev.date}" if ev.when == "said" and ev.date != "unknown" else ev.date

@@ -133,8 +133,8 @@ def test_render_marks_said_dates_and_header():
     events, _ = chain.parse_output(GOOD, 4)
     text = chain.render(events)
     lines = text.split("\n")
-    assert lines[0].startswith("[timeline · 4 dated entries built from the retrieved memories, oldest first;")
-    assert "does not answer the question]" in lines[0]
+    assert lines[0].startswith("[timeline · 4 dated entries found in the retrieved memories, oldest first;")
+    assert "does not answer the question; the memories below are the source and may contain more]" in lines[0]
     assert lines[1] == "- 2023-05-14: The user attended the Tribeca film festival."
     assert lines[3] == "- said on 2023-06-15: The assistant suggested the Toronto festival."
     assert lines[4] == "- unknown: The user went to Venice."
