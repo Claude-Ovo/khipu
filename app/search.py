@@ -547,10 +547,9 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
         if len(out) >= top_k:
             break
         r = idx.rows[p]
-        if r.kind != "msg" and config.NOTES_MAX_RETURNED:
-            if notes >= config.NOTES_MAX_RETURNED:
-                continue
-            notes += 1
+        is_note = r.kind != "msg" and bool(config.NOTES_MAX_RETURNED)
+        if is_note and notes >= config.NOTES_MAX_RETURNED:
+            continue
         t = _rendered_tokens(idx, p)
         if used + t > config.BUDGET_TOKENS:
             skipped += 1
@@ -562,6 +561,8 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
             item["created_at"] = ca
         out.append(item)
         used += t
+        if is_note:
+            notes += 1  # 只数真正返回的笔记（审查 #8-4：预算放不下的那条以前也占配额）
     if trace is not None:
         trace["boxed"] = [{"id": it["id"], "tokens": (_rendered_tokens(idx, idx.id_to_pos[it["id"]]) if it["id"] in idx.id_to_pos
                                                        else count_tokens(it["content"]))} for it in out]

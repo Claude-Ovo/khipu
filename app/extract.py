@@ -74,6 +74,7 @@ class ExtractUnavailable(Exception):
 
 class _Retry(Exception):
     """408 / 429 / 5xx / 200 但没有 choices：换个时间再试。"""
+    counted = False   # True = 抛出前已经把这次（含花掉的 token）记进用量计数器，外层别再记一次
 
 
 # ---------- 输入：消息 → 窗 ----------
@@ -201,17 +202,31 @@ def parse_output(content: str) -> tuple[list[Note], bool]:
             continue
         if not isinstance(text, str):
             continue
-        text = " ".join(text.split())[:400]
+        text = " ".join(clean_text(text).split())[:400]
         if not text or text.lower() in seen:
             continue
         seen.add(text.lower())
+        subj = clean_text(subj) if isinstance(subj, str) else subj
+        key = clean_text(key) if isinstance(key, str) else key
         out.append(Note("note", text, _subject(subj), _key(key)))
         if len(out) >= config.EXTRACT_MAX_FACTS:
             break
     summary = data.get("summary")
     if isinstance(summary, str) and summary.strip():
-        out.append(Note("summary", " ".join(summary.split())[:1000], None, None))
+        out.append(Note("summary", " ".join(clean_text(summary).split())[:1000], None, None))
     return out, True
+
+
+def clean_text(s: str) -> str:
+    """模型生成的文本也可能带 NUL 或孤立代理项（审查 #8-2：以前落缓存时 UTF-8 编码失败，Add 回 500 而不是 503）。
+    与 main._clean_text 同一套规则：去 NUL，非法码位换成替代字符，合法文本原样返回。"""
+    if "\x00" in s:
+        s = s.replace("\x00", "")
+    try:
+        s.encode("utf-8")
+    except UnicodeEncodeError:
+        s = s.encode("utf-8", "replace").decode("utf-8")
+    return s
 
 
 # ---------- 缓存（库） ----------
@@ -271,16 +286,25 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
             content = choices[0]["message"].get("content") or ""
             u = payload.get("usage") or {}
             pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
-            count(True, pt, ct, ms)
             model = payload.get("model")
-            if not (isinstance(model, str) and "gpt-4o-mini" in model):  # 中转换了模型：只记日志，结果照收，事后查
-                log.error("%s: relay answered with model %r, expected %s", kind, model, config.EXTRACT_MODEL)
+            if isinstance(model, str) and "gpt-4o-mini" not in model:
+                # 中转换了模型（审查 #8-1）：这不是 gpt-4o-mini 的输出，收下就违反学术榜规则，还会进缓存被主办方复现时对不上。
+                # 当作一次失败重试；连着都不对就 ExtractUnavailable → Add 503，等人来处理。没报模型名的回复照收（有的中转不回这个字段）
+                count(False, pt, ct, ms)   # 钱花了，token 要记（TOKEN_CAP 看的是累计）
+                log.error("%s: relay answered with model %r, expected %s; rejecting", kind, model, config.EXTRACT_MODEL)
+                err = _Retry(f"relay answered with model {model!r}")
+                err.counted = True
+                raise err
+            count(True, pt, ct, ms)
+            if model is None:
+                log.warning("%s: relay reply has no model field (expected %s), keeping", kind, config.EXTRACT_MODEL)
             log.info("%s ok in=%s out=%s %dms attempt=%d finish=%s model=%s", kind, pt, ct, ms, attempt + 1,
                      choices[0].get("finish_reason"), model)
             return content, "ok", pt, ct, model
         except (httpx.HTTPError, _Retry, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
             ms = ms or int((time.monotonic() - t0) * 1000)
-            count(False, None, None, ms)
+            if not getattr(e, "counted", False):
+                count(False, None, None, ms)
             log.warning("%s attempt %d failed after %dms: %s %s", kind, attempt + 1, ms, type(e).__name__, e)
             if attempt == attempts - 1:
                 raise ExtractUnavailable(f"{type(e).__name__}: {e}") from e
@@ -299,7 +323,8 @@ async def _extract_uncached(sha: str, body: dict) -> list[Note]:
     if status != "ok":
         usage.extract_gave_empty()
         log.warning("extract window %s kept empty (%s)", sha[:12], status)
-    await asyncio.to_thread(_cache_put, sha, {"items": [asdict(n) for n in notes], "raw": content, "model": model},
+    await asyncio.to_thread(_cache_put, sha, {"items": [asdict(n) for n in notes],
+                                              "raw": clean_text(content) if isinstance(content, str) else content, "model": model},
                             status, pt, ct)
     return notes
 
@@ -354,7 +379,13 @@ async def extract_request(messages: list[dict]) -> list[Note]:
     windows = build_windows(messages)
     if not windows:
         return []
-    results = await asyncio.gather(*(extract_window(w) for w in windows))
+    try:
+        # 整次 Add 的总时限（审查 #8-2）：单次读超时 60 s 不包含排队、重试和多窗，平台 Add 上限 30 分钟。
+        # 超了就 503 让平台稍后重试；被取消的窗由 extract_window 自己清理（领头的注销，等待者重来）
+        results = await asyncio.wait_for(asyncio.gather(*(extract_window(w) for w in windows)),
+                                         timeout=config.EXTRACT_REQUEST_TIMEOUT_S or None)
+    except asyncio.TimeoutError as e:
+        raise ExtractUnavailable(f"request deadline {config.EXTRACT_REQUEST_TIMEOUT_S}s exceeded over {len(windows)} window(s)") from e
     out: list[Note] = []
     seen: set[tuple[str, str]] = set()
     for notes in results:

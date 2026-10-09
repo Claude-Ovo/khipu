@@ -458,10 +458,25 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 
 # ---------- 接口 ----------
 
+def _effective_config() -> dict[str, Any]:
+    """开跑前核对用（审查 #8-5）：进程实际读到的开关和抽取端点，不含任何密钥。"""
+    base = config.EXTRACT_BASE_URL
+    host = base.split("//", 1)[-1].split("/", 1)[0] if base else ""
+    return {
+        "extract": config.EXTRACT_ENABLED, "extract_model": config.EXTRACT_MODEL, "extract_host": host,
+        "extract_key_set": bool(config.EXTRACT_API_KEY), "extract_token_cap": config.EXTRACT_TOKEN_CAP,
+        "extract_request_timeout_s": config.EXTRACT_REQUEST_TIMEOUT_S,
+        "notes_in_search": config.NOTES_IN_SEARCH, "notes_max_returned": config.NOTES_MAX_RETURNED,
+        "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
+        "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
+        "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
+    }
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     await asyncio.to_thread(_health_check)
-    return {"ok": True, "service": "khipu", "usage": usage.snapshot(), "loop": watchdog.snapshot()}
+    return {"ok": True, "service": "khipu", "usage": usage.snapshot(), "loop": watchdog.snapshot(), "config": _effective_config()}
 
 
 @app.post("/add", dependencies=[Depends(require_auth)])

@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import sys
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -398,11 +400,62 @@ def test_mark_latest():
     assert rows[4].note_tag == "" and rows[5].note_tag == "" and rows[1].note_tag == ""
 
 
-def test_relay_model_mismatch_is_logged_not_dropped(monkeypatch, caplog):
-    s = _Script([_resp(200, _completion(GOOD, model="qwen-turbo"))])
+def test_relay_model_mismatch_is_rejected_and_retried(monkeypatch, caplog, _offline):
+    # 审查 #8-1：中转换了模型的回复不收、不缓存；下一次尝试给对的就用对的
+    s = _Script([_resp(200, _completion(GOOD, model="qwen-turbo")), _resp(200, _completion(GOOD))])
     _use(monkeypatch, s)
     assert len(_run(extract.extract_window("[1] a"))) == 2
     assert "relay answered with model 'qwen-turbo'" in caplog.text
+    assert httpclient.usage.extract_failed == 1 and httpclient.usage.extract_ok == 1
+    assert all(v[0]["model"] == "gpt-4o-mini-2024-07-18" for v in _offline.values())
+
+
+def test_relay_model_mismatch_every_time_is_unavailable(monkeypatch, _offline):
+    monkeypatch.setattr(config, "EXTRACT_ATTEMPTS", 2)
+    s = _Script([_resp(200, _completion(GOOD, model="qwen-turbo")), _resp(200, _completion(GOOD, model="deepseek-chat"))])
+    _use(monkeypatch, s)
+    with pytest.raises(extract.ExtractUnavailable):
+        _run(extract.extract_window("[1] b"))
+    assert not _offline  # 什么都没进缓存
+
+
+def test_relay_reply_without_model_field_is_kept(monkeypatch):
+    payload = _completion(GOOD)
+    del payload["model"]
+    _use(monkeypatch, _Script([_resp(200, payload)]))
+    assert len(_run(extract.extract_window("[1] c"))) == 2
+
+
+def test_parse_output_cleans_lone_surrogates_and_nul():
+    # 审查 #8-2：模型吐出孤立代理项，以前缓存序列化时 UTF-8 编码失败 → Add 500
+    raw = '{"facts": [{"text": "name\\ud800here\\u0000!", "subject": "Ca\\udfffrol", "key": "k\\u0000"}], "summary": "s\\ud800"}'
+    notes, ok = extract.parse_output(raw)
+    assert ok and len(notes) == 2
+    blob = json.dumps([asdict(n) for n in notes], ensure_ascii=False)
+    blob.encode("utf-8")  # 不再抛
+    assert "\x00" not in blob and notes[0].text.startswith("name") and notes[0].text.endswith("here!")
+    assert extract.clean_text("plain ascii 中文") == "plain ascii 中文"
+
+
+def test_request_deadline_turns_into_unavailable(monkeypatch):
+    monkeypatch.setattr(config, "EXTRACT_REQUEST_TIMEOUT_S", 0.05)
+    gate = asyncio.Event()  # 永远不开：模拟中转站挂着不回
+    s = _Script([_resp(200, _completion(GOOD))], gate=gate)
+    _use(monkeypatch, s)
+    with pytest.raises(extract.ExtractUnavailable, match="deadline"):
+        _run(extract.extract_request([{"role": "user", "content": "I adopted a dog named Max."}]))
+    assert not extract._inflight  # 被取消的领头窗注销了
+
+
+def test_notes_cap_counts_only_returned_notes(monkeypatch):
+    # 审查 #8-4：预算放不下而跳过的笔记以前也占配额
+    long = "word " * 1500
+    rows = [_row(0, "a", text="t0"), _row(1, "a", kind="note", text=long), _row(2, "a", kind="note", text=long),
+            _row(3, "a", kind="note", text="short note"), _row(4, "a", text="t4")]
+    idx = SimpleNamespace(rows=rows, session_label={}, speakers=frozenset(), token_cache={}, id_to_pos={r.id: r.pos for r in rows})
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 1)
+    monkeypatch.setattr(config, "BUDGET_TOKENS", 300)
+    assert [it["id"] for it in search._box(idx, [0, 1, 2, 3, 4], {}, 3)] == [rows[0].id, rows[3].id, rows[4].id]
 
 
 # ---------- 时间线清单 ----------
