@@ -13,7 +13,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -458,12 +460,30 @@ async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
 
 # ---------- 接口 ----------
 
+def _read_commit() -> str:
+    try:
+        return (Path(__file__).resolve().parents[1] / "COMMIT").read_text(encoding="utf-8").strip()[:40] or "unknown"
+    except OSError:
+        return "unknown"
+
+
+_COMMIT = _read_commit()
+
+
 def _effective_config() -> dict[str, Any]:
-    """开跑前核对用（审查 #8-5）：进程实际读到的开关和抽取端点，不含任何密钥。"""
-    base = config.EXTRACT_BASE_URL
-    host = base.split("//", 1)[-1].split("/", 1)[0] if base else ""
+    """开跑前核对用（审查 #8-5）：进程实际读到的开关和抽取端点，不含任何密钥。
+    端点只给主机名（复审 #9-C：authority 可能带 user:pass@）。"""
+    try:
+        u = urlsplit(config.EXTRACT_BASE_URL or "")
+        host = u.hostname or ""
+        if host and u.port and u.port not in (80, 443):
+            host = f"{host}:{u.port}"
+    except ValueError:
+        host = ""
     return {
+        "commit": _COMMIT,
         "extract": config.EXTRACT_ENABLED, "extract_model": config.EXTRACT_MODEL, "extract_host": host,
+        "add_deadline_s": config.ADD_DEADLINE_S,
         "extract_key_set": bool(config.EXTRACT_API_KEY), "extract_token_cap": config.EXTRACT_TOKEN_CAP,
         "extract_request_timeout_s": config.EXTRACT_REQUEST_TIMEOUT_S,
         "notes_in_search": config.NOTES_IN_SEARCH, "notes_max_returned": config.NOTES_MAX_RETURNED,
@@ -479,16 +499,8 @@ async def health() -> dict[str, Any]:
     return {"ok": True, "service": "khipu", "usage": usage.snapshot(), "loop": watchdog.snapshot(), "config": _effective_config()}
 
 
-@app.post("/add", dependencies=[Depends(require_auth)])
-async def add(req: AddRequest) -> dict[str, Any]:
-    payload_sha = hashlib.sha256(json.dumps(req.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-    saved = await asyncio.to_thread(_saved_response, req.user_id, req.request_id, payload_sha)
-    if saved is not None:
-        return saved
-    kept = [m for m in req.messages if m.content.strip()]
-    if len(kept) != len(req.messages):  # 空内容以前回 422；现在跳过这几条，其余照常写（合法请求不会走到这里）
-        log.info("add %s: skipped %d empty message(s) of %d", req.request_id, len(req.messages) - len(kept), len(req.messages))
-        req = req.model_copy(update={"messages": kept})
+async def _prepare_add(req: AddRequest) -> tuple[list, dict[str, list[float]]]:
+    """Add 的两个外部阶段：B3 抽取、向量。都只看请求本身不看库，所以能在事务前算好；任一阶段拿不到就 503，不写半截数据。"""
     # B3：先抽取（调不通回 503，和向量同一套语义：不写半截数据）。抽取只看请求本身，不看库
     notes = []
     if config.EXTRACT_ENABLED and req.messages:
@@ -512,6 +524,26 @@ async def add(req: AddRequest) -> dict[str, Any]:
         if any(v is None for v in vecs):
             raise HTTPException(status_code=503, detail="embedding temporarily unavailable, retry later")
         vectors = dict(zip(uniq, vecs))
+    return notes, vectors
+
+
+@app.post("/add", dependencies=[Depends(require_auth)])
+async def add(req: AddRequest) -> dict[str, Any]:
+    payload_sha = hashlib.sha256(json.dumps(req.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    saved = await asyncio.to_thread(_saved_response, req.user_id, req.request_id, payload_sha)
+    if saved is not None:
+        return saved
+    kept = [m for m in req.messages if m.content.strip()]
+    if len(kept) != len(req.messages):  # 空内容以前回 422；现在跳过这几条，其余照常写（合法请求不会走到这里）
+        log.info("add %s: skipped %d empty message(s) of %d", req.request_id, len(req.messages) - len(kept), len(req.messages))
+        req = req.model_copy(update={"messages": kept})
+    # 两个外部阶段（抽取、向量）合在一个总时限里（复审 #9-D：单看抽取的 600 s 不覆盖向量那段）。超了 503 让平台稍后重试；
+    # 事务阶段是本机库写入、不受外部拖累，不放进这个时限（线程里的事务取消不了，半截 503 反而会留下已写入的请求）
+    try:
+        notes, vectors = await asyncio.wait_for(_prepare_add(req), timeout=config.ADD_DEADLINE_S or None)
+    except asyncio.TimeoutError as e:
+        log.warning("add %s: deadline %ss exceeded before the transaction", req.request_id, config.ADD_DEADLINE_S)
+        raise HTTPException(status_code=503, detail="add deadline exceeded, retry later") from e
     response, segments = await asyncio.to_thread(_add_transaction, req, payload_sha, vectors, notes)
     if segments:
         invalidate(req.user_id)

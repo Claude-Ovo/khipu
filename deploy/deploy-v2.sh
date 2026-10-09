@@ -57,9 +57,10 @@ EXTRACT_MARK_LATEST=0
 EXTRACT_TOKEN_CAP=$CAP
 ENV
 [ -s /srv/aml/.extract ] || { echo "!! /srv/aml/.extract missing: run deploy/set-extract-key.sh first"; exit 1; }
-# .extract 是最后一层覆盖，只许放 key 和端点，不许夹开关
-if grep -vE '^\s*(#|$|EXTRACT_API_KEY=|OPENROUTER_API_KEY=|EXTRACT_BASE_URL=|EXTRACT_MODEL=|EXTRACT_PROVIDERS=)' /srv/aml/.extract | grep -q .; then
-  echo "!! /srv/aml/.extract contains lines other than key/endpoint:"; grep -vE '^\s*(#|$|EXTRACT_API_KEY=|OPENROUTER_API_KEY=|EXTRACT_BASE_URL=|EXTRACT_MODEL=|EXTRACT_PROVIDERS=)' /srv/aml/.extract | sed 's/=.*/=.../'; exit 1
+# .extract 是最后一层覆盖，只许放 key 和端点，不许夹开关。读完整个文件再判（复审 #9-B：grep -q 遇 SIGPIPE 会把 pipefail 判成假而放行）
+BAD_LINES="$(tr -d '\r' < /srv/aml/.extract | grep -vE '^\s*([#;]|$|EXTRACT_API_KEY=|OPENROUTER_API_KEY=|EXTRACT_BASE_URL=|EXTRACT_MODEL=|EXTRACT_PROVIDERS=)' | sed 's/=.*/=.../' || true)"
+if [ -n "$BAD_LINES" ]; then
+  echo "!! /srv/aml/.extract contains lines other than key/endpoint:"; echo "$BAD_LINES"; exit 1
 fi
 
 echo "== systemd aml2"
@@ -85,7 +86,20 @@ H="$(curl -s -m 5 http://127.0.0.1:8082/health)"
 echo "$H" | /srv/aml/.venv/bin/python -c 'import sys,json; c=json.load(sys.stdin)["config"]; print(json.dumps(c, ensure_ascii=False))'
 GOT_CAP="$(echo "$H" | /srv/aml/.venv/bin/python -c 'import sys,json; print(json.load(sys.stdin)["config"]["extract_token_cap"])')"
 [ "$GOT_CAP" = "$CAP" ] || { echo "!! effective EXTRACT_TOKEN_CAP=$GOT_CAP, wanted $CAP"; exit 1; }
-echo "$H" | /srv/aml/.venv/bin/python -c 'import sys,json; c=json.load(sys.stdin)["config"]; bad=[k for k in ("forget","chain","history","ledger","span","hop","mark_latest") if c[k]]; assert c["extract"] and c["extract_key_set"] and c["notes_max_returned"]==20 and not bad, (bad, c); print("config check ok")'
+EXPECT_COMMIT="$(cat COMMIT)" EXPECT_HOST="${EXPECT_HOST:-aihubmix.com}" EXPECT_MODEL="${EXPECT_MODEL:-gpt-4o-mini-2024-07-18}" \
+  /srv/aml/.venv/bin/python - "$H" <<'PY'
+import json, os, sys
+c = json.loads(sys.argv[1])["config"]
+want = {"commit": os.environ["EXPECT_COMMIT"], "extract_model": os.environ["EXPECT_MODEL"], "extract_host": os.environ["EXPECT_HOST"]}
+bad = [f"{k}={c.get(k)!r} wanted {v!r}" for k, v in want.items() if c.get(k) != v]
+bad += [f"{k} should be off" for k in ("forget", "chain", "history", "ledger", "span", "hop", "mark_latest") if c.get(k)]
+bad += [f"{k} should be on" for k in ("extract", "extract_key_set", "notes_in_search", "rerank") if not c.get(k)]
+if c.get("notes_max_returned") != 20: bad.append(f"notes_max_returned={c.get('notes_max_returned')} wanted 20")
+if c.get("fusion_rule") != "legacy": bad.append(f"fusion_rule={c.get('fusion_rule')!r} wanted 'legacy'")
+if bad:
+    print("!! config check failed:"); [print("   " + b) for b in bad]; sys.exit(1)
+print("config check ok (commit, model, host, flags)")
+PY
 echo "8080: $(curl -s -m 5 http://127.0.0.1:8080/health | cut -c1-80)"
 echo "public /v2: $(curl -s -m 10 https://43.128.132.126/v2/health | cut -c1-80)"
 echo "public /:   $(curl -s -m 10 https://43.128.132.126/health | cut -c1-80)"
