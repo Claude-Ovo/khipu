@@ -67,8 +67,12 @@ def _offline(monkeypatch):
     store: dict[str, tuple] = {}
     monkeypatch.setattr(config, "EXTRACT_API_KEY", "test-key")
     monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 0)
+    def put(sha, out, status, pt, ct):
+        json.dumps(out, ensure_ascii=False).encode("utf-8")   # 库里是 jsonb + UTF-8：编不过去就是真实路径会 500（复审 #9-E）
+        store.setdefault(sha, (out, status))
     monkeypatch.setattr(extract, "_cache_get", lambda sha: store[sha][0] if sha in store else None)
-    monkeypatch.setattr(extract, "_cache_put", lambda sha, out, status, pt, ct: store.setdefault(sha, (out, status)))
+    monkeypatch.setattr(extract, "_cache_put", put)
+    monkeypatch.setattr(extract, "_cache_delete", lambda sha: store.pop(sha, None))
     monkeypatch.setattr(extract, "extract_sem", asyncio.Semaphore(4))
     monkeypatch.setattr(extract, "_inflight", {})
     monkeypatch.setattr(httpclient, "usage", httpclient._Usage())
@@ -407,7 +411,36 @@ def test_relay_model_mismatch_is_rejected_and_retried(monkeypatch, caplog, _offl
     assert len(_run(extract.extract_window("[1] a"))) == 2
     assert "relay answered with model 'qwen-turbo'" in caplog.text
     assert httpclient.usage.extract_failed == 1 and httpclient.usage.extract_ok == 1
+    assert httpclient.usage.extract_tokens() == 2 * (100 + 20)   # 错模型那次的 token 也花了，要记（且只记一次）
     assert all(v[0]["model"] == "gpt-4o-mini-2024-07-18" for v in _offline.values())
+
+
+def test_model_allowed_is_an_allowlist_not_a_substring():
+    ok = ["gpt-4o-mini-2024-07-18", "gpt-4o-mini", "openai/gpt-4o-mini-2024-07-18", "openai/gpt-4o-mini", " GPT-4o-mini "]
+    bad = ["gpt-4o-mini-fake", "gpt-4o-mini-2024-07-18-distill", "gpt-4o", "qwen-turbo", None, 7, ""]
+    assert all(extract.model_allowed(m) for m in ok)
+    assert not any(extract.model_allowed(m) for m in bad)
+
+
+def test_cached_output_from_wrong_model_is_discarded_and_redone(monkeypatch, _offline, caplog):
+    sha = extract.body_sha(extract.request_body("[1] stale"))
+    _offline[sha] = ({"items": [{"kind": "note", "text": "stale", "subject": None, "key": None}], "raw": "x", "model": "deepseek-chat"}, "ok")
+    s = _Script([_resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    notes = _run(extract.extract_window("[1] stale"))
+    assert [n.text for n in notes][0].startswith("Caroline") and s.calls == 1
+    assert _offline[sha][0]["model"] == "gpt-4o-mini-2024-07-18" and "discarding" in caplog.text
+    assert httpclient.usage.extract_cache_hits == 0
+
+
+def test_raw_with_lone_surrogate_survives_cache_serialization(monkeypatch, _offline):
+    # 中转站返回的 JSON 文本里带 \ud800 转义：外层 r.json() 解出来的 content 里是转义序列，parse_output 再解一层才变成孤立代理项
+    bad_raw = '{"facts": [{"text": "ok"}], "summary": "s\\ud800"}'
+    body = json.dumps(_completion(bad_raw), ensure_ascii=True)
+    _use(monkeypatch, _Script([_resp(200, text=body)]))
+    assert len(_run(extract.extract_window("[1] sur"))) == 2   # put 桩会对整个 payload 做 UTF-8 编码，编不过就抛
+    (out, status), = _offline.values()
+    assert status == "ok" and "\ud800" not in out["raw"]
 
 
 def test_relay_model_mismatch_every_time_is_unavailable(monkeypatch, _offline):
@@ -447,6 +480,25 @@ def test_request_deadline_turns_into_unavailable(monkeypatch):
     assert not extract._inflight  # 被取消的领头窗注销了
 
 
+def test_waiter_cancelled_together_with_leader_does_not_restart(monkeypatch):
+    # 复审 #9-A：两个同窗请求同时到期，等待者看到领头被取消就「自己来」，第二次抽取让 deadline 失效
+    monkeypatch.setattr(config, "EXTRACT_REQUEST_TIMEOUT_S", 0.05)
+    gate = asyncio.Event()
+    s = _Script([_resp(200, _completion(GOOD)), _resp(200, _completion(GOOD))], gate=gate)
+    _use(monkeypatch, s)
+    msgs = [{"role": "user", "content": "I adopted a dog named Max."}]
+
+    async def both():
+        r = await asyncio.gather(extract.extract_request(msgs), extract.extract_request(msgs), return_exceptions=True)
+        await asyncio.sleep(0.15)   # 给「自己来」的那一路机会去发第二次请求（修好后它不该发）
+        return r
+    t0 = asyncio.new_event_loop().time()
+    res = _run(both())
+    assert all(isinstance(x, extract.ExtractUnavailable) for x in res), res
+    assert s.calls == 1, f"second extraction was started by a cancelled waiter ({s.calls} calls)"
+    assert not extract._inflight
+
+
 def test_notes_cap_counts_only_returned_notes(monkeypatch):
     # 审查 #8-4：预算放不下而跳过的笔记以前也占配额
     long = "word " * 1500
@@ -456,6 +508,10 @@ def test_notes_cap_counts_only_returned_notes(monkeypatch):
     monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 1)
     monkeypatch.setattr(config, "BUDGET_TOKENS", 300)
     assert [it["id"] for it in search._box(idx, [0, 1, 2, 3, 4], {}, 3)] == [rows[0].id, rows[3].id, rows[4].id]
+    # 带 lead（时间线清单当第一条）：lead 占 top_k 和 token，不占笔记名额；短笔记仍然进得来
+    lead = [{"id": "timeline:x", "content": "[timeline]\n- 2023-05-01: a", "text": "[timeline]\n- 2023-05-01: a", "score": 1.0}]
+    out = search._box(idx, [0, 1, 2, 3, 4], {}, 4, None, lead)
+    assert [it["id"] for it in out] == ["timeline:x", rows[0].id, rows[3].id, rows[4].id]
 
 
 # ---------- 时间线清单 ----------

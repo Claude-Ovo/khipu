@@ -72,6 +72,18 @@ class ExtractUnavailable(Exception):
     """调不通、没 key、超出预算：Add 回 503，平台稍后重试。"""
 
 
+_ALLOWED_MODEL_NAMES = frozenset({"gpt-4o-mini", "gpt-4o-mini-2024-07-18"})
+
+
+def model_allowed(model: object) -> bool:
+    """回复里报的模型名是不是我们申报的那一个：允许无日期别名和供应商前缀（openai/…），
+    不允许任意含 gpt-4o-mini 的串（复审 #9-D：子串判断会放过 gpt-4o-mini-xxx 之类）。"""
+    if not isinstance(model, str):
+        return False
+    name = model.strip().rsplit("/", 1)[-1].lower()
+    return name in _ALLOWED_MODEL_NAMES or name == config.EXTRACT_MODEL.rsplit("/", 1)[-1].lower()
+
+
 class _Retry(Exception):
     """408 / 429 / 5xx / 200 但没有 choices：换个时间再试。"""
     counted = False   # True = 抛出前已经把这次（含花掉的 token）记进用量计数器，外层别再记一次
@@ -237,6 +249,12 @@ def _cache_get(sha: str) -> dict | None:
     return row[0] if row else None
 
 
+def _cache_delete(sha: str) -> None:
+    with pool.connection() as conn:
+        conn.execute("DELETE FROM extract_cache WHERE input_sha = %s", (sha,))
+        conn.commit()
+
+
 def _cache_put(sha: str, output: dict, status: str, prompt_tokens: int | None, completion_tokens: int | None,
                version: str | None = None) -> None:
     with pool.connection() as conn:
@@ -287,7 +305,7 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
             u = payload.get("usage") or {}
             pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
             model = payload.get("model")
-            if isinstance(model, str) and "gpt-4o-mini" not in model:
+            if isinstance(model, str) and not model_allowed(model):
                 # 中转换了模型（审查 #8-1）：这不是 gpt-4o-mini 的输出，收下就违反学术榜规则，还会进缓存被主办方复现时对不上。
                 # 当作一次失败重试；连着都不对就 ExtractUnavailable → Add 503，等人来处理。没报模型名的回复照收（有的中转不回这个字段）
                 count(False, pt, ct, ms)   # 钱花了，token 要记（TOKEN_CAP 看的是累计）
@@ -345,6 +363,9 @@ async def extract_window(window: str) -> list[Note]:
         try:
             return await asyncio.shield(fut)
         except asyncio.CancelledError:
+            me = asyncio.current_task()
+            if me is not None and getattr(me, "cancelling", lambda: 0)() > 0:
+                raise  # 是自己被取消（整次 Add 超时/断开），不是领头的出事：别替别人重跑（复审 #9-A）
             if fut.cancelled():  # 领头的请求被取消了，自己来
                 return await extract_window(window)
             raise
@@ -355,6 +376,11 @@ async def extract_window(window: str) -> list[Note]:
     _inflight[sha] = fut
     try:
         cached = await asyncio.to_thread(_cache_get, sha)
+        if cached is not None and isinstance(cached.get("model"), str) and not model_allowed(cached["model"]):
+            # 旧缓存里躺着别的模型的输出（校验加上之前存的）：当没命中，删掉重抽（复审 #9-D）
+            log.error("extract cache %s holds model %r, discarding", sha[:12], cached["model"])
+            await asyncio.to_thread(_cache_delete, sha)
+            cached = None
         if cached is not None:
             usage.extract_cached()
             notes = _notes_from(cached)
