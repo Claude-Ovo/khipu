@@ -60,7 +60,7 @@ The organizer replays Add/Search with their own keys and rejects large divergenc
 - **Operational failures** — no key, 401/402/404, 408/429/5xx or timeouts after `EXTRACT_ATTEMPTS`, a 200 without `choices`, or `EXTRACT_TOKEN_CAP` reached — raise, and Add returns 503 (retryable per the contract). Nothing is written: a request is stored with its notes or not at all, same rule as embeddings.
 - **Counters.** `/health` → `usage.extract`: calls, ok, failed, prompt/completion tokens, avg latency, cache hits, empty windows. A non-zero `empty` early in a run means a configuration problem (e.g. a 400 from a parameter a provider rejects) and should stop the run.
 
-Remaining non-determinism: OpenAI does not guarantee identical output for identical requests even with a seed. A reproduction will word some facts differently; retrieval of raw messages is unaffected.
+Remaining non-determinism: OpenAI does not guarantee identical output for identical requests even with a seed. A reproduction will word some facts differently. Raw messages are stored and returned unchanged, but notes share the BM25, vector and entity indexes with them, so the recall and ranking of raw messages can shift when the notes differ; `NOTES_MAX_RETURNED` caps how many notes are returned, not how much the ordering may move. A reply that names a model other than gpt-4o-mini is rejected and retried (then 503), never cached.
 
 ## Config
 

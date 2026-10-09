@@ -69,6 +69,7 @@ EXTRACT_MSG_MAX_TOKENS = _int("EXTRACT_MSG_MAX_TOKENS", 3000)   # 单条消息�
 EXTRACT_MAX_FACTS = _int("EXTRACT_MAX_FACTS", 40)               # 每窗最多收几条事实
 EXTRACT_TIMEOUT_S = _float("EXTRACT_TIMEOUT_S", 60)             # 单次尝试的读超时
 EXTRACT_ATTEMPTS = _int("EXTRACT_ATTEMPTS", 3)
+EXTRACT_REQUEST_TIMEOUT_S = _float("EXTRACT_REQUEST_TIMEOUT_S", 600)  # 一次 Add 里全部窗口（排队+重试）的总时限；超了回 503。平台 Add 上限 30 分钟（审查 #8-2）
 EXTRACT_CONCURRENCY = _int("EXTRACT_CONCURRENCY", 16)
 EXTRACT_TOKEN_CAP = _int("EXTRACT_TOKEN_CAP", 0)                # >0：本进程累计 token 超过它就不再调用、Add 回 503（回放时防烧钱）
 EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"
