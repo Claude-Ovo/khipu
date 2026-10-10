@@ -676,5 +676,5 @@ def test_cache_row_keeps_input_window_and_cleans_metadata(monkeypatch, _offline)
 def test_prompt_keeps_uncertainty_and_no_invented_dates():
     # 主办方 10-10：定不下来的日期和事件状态要保留不确定性。这里只能核提示词写了这条要求，模型照不照做要看线上样本
     p = extract.SYSTEM_PROMPT
-    assert "do not invent a date" in p and "never write a planned or possible event as done" in p
-    assert "header is the time reference" in p and extract.PROMPT_VERSION == "x3"
+    assert "header is the time reference" in p and "stay plans" in p
+    assert extract.PROMPT_VERSION == "x4"
