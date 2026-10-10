@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS extract_cache (
     completion_tokens INTEGER,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 主办方 10-10 回信：缓存按用户隔离（user_id 进键，也单独落列）；仅凭模型名不足以核验身份，留回复 id 和 system_fingerprint 供私下复核
+ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS response_id TEXT;
+ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS system_fingerprint TEXT;
+CREATE INDEX IF NOT EXISTS extract_cache_user_idx ON extract_cache (user_id);
 """
 
 

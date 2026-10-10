@@ -183,7 +183,7 @@ def test_build_chain_timeout_is_silent(monkeypatch, _offline):
 
     async def slow(body, kind="chain", attempts=None):
         await asyncio.Event().wait()   # 永远等不到（fixture 把 asyncio.sleep 换成了立刻返回，不能用它装慢）
-        return GOOD, "ok", 1, 1, "gpt-4o-mini-2024-07-18"
+        return GOOD, "ok", 1, 1, extract.ReplyMeta(model="gpt-4o-mini-2024-07-18")
     monkeypatch.setattr(chain, "_call", slow)
     assert _run(chain.build_chain("how many", LINES)) is None
     assert httpclient.usage.snapshot()["chain"]["skipped"] == 1
