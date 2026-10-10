@@ -68,9 +68,11 @@ def _offline(monkeypatch):
     store: dict[str, tuple] = {}
     monkeypatch.setattr(config, "EXTRACT_API_KEY", "test-key")
     monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 0)
-    def put(sha, out, status, pt, ct, version=None, scope=""):
+    def put(sha, out, status, pt, ct, version=None, scope="", input_text=None):
         json.dumps(out, ensure_ascii=False).encode("utf-8")   # 库里是 jsonb + UTF-8：编不过去就是真实路径会 500（复审 #9-E）
-        store.setdefault(sha, (out, status, scope))
+        if input_text is not None:
+            input_text.encode("utf-8")
+        store.setdefault(sha, (out, status, scope, input_text))
     monkeypatch.setattr(extract, "_cache_get", lambda sha: store[sha][0] if sha in store else None)
     monkeypatch.setattr(extract, "_cache_put", put)
     monkeypatch.setattr(extract, "_cache_delete", lambda sha: store.pop(sha, None))
@@ -177,7 +179,7 @@ def test_cache_miss_then_hit(monkeypatch, _offline):
     again = _run(extract.extract_window("[1] Caroline: I adopted a dog"))
     assert first == again and len(first) == 2
     assert s.calls == 1
-    (out, status, scope), = _offline.values()
+    (out, status, scope, _), = _offline.values()
     assert status == "ok" and out["raw"] == GOOD and out["model"] == "gpt-4o-mini-2024-07-18"
     # 主办方 10-10：仅凭模型名不足以核验身份，回复的 id / system_fingerprint / created 一起留档
     assert (out["response_id"], out["system_fingerprint"], out["created"]) == ("chatcmpl-test", "fp_test", 1700000000)
@@ -443,7 +445,7 @@ def test_raw_with_lone_surrogate_survives_cache_serialization(monkeypatch, _offl
     body = json.dumps(_completion(bad_raw), ensure_ascii=True)
     _use(monkeypatch, _Script([_resp(200, text=body)]))
     assert len(_run(extract.extract_window("[1] sur"))) == 2   # put 桩会对整个 payload 做 UTF-8 编码，编不过就抛
-    (out, status, _), = _offline.values()
+    (out, status, _, _), = _offline.values()
     assert status == "ok" and "\ud800" not in out["raw"]
 
 
@@ -652,5 +654,27 @@ def test_extract_request_passes_user_scope(monkeypatch, _offline):
     _use(monkeypatch, s)
     msgs = [{"role": "user", "content": "I adopted a dog named Max.", "timestamp": None}]
     assert len(_run(extract.extract_request(msgs, scope="user-z"))) == 2
-    (out, status, scope), = _offline.values()
+    (out, status, scope, _), = _offline.values()
     assert scope == "user-z" and status == "ok"
+
+
+def test_cache_row_keeps_input_window_and_cleans_metadata(monkeypatch, _offline):
+    # 复审 #10-E1：缓存行要带送给模型的原文窗，Add 后面失败时也能对回来源；#10-C：元数据里的坏字符不能把 Add 打成 500
+    payload = _completion(GOOD)
+    payload["id"] = "id-" + chr(0xD800) + "x" + chr(0) + "y"   # 孤立代理项 + NUL
+    payload["system_fingerprint"] = 12345          # 非字符串：丢掉
+    payload["created"] = True                       # bool 不算 int
+    body = json.dumps(payload, ensure_ascii=True)   # 中转的 JSON 文本里是转义序列，r.json() 解出来才是孤立代理项
+    _use(monkeypatch, _Script([_resp(200, text=body)]))
+    assert len(_run(extract.extract_window("[1] 2023-05-20 user: I adopted a dog", scope="u1"))) == 2
+    (out, status, scope, window), = _offline.values()
+    assert window == "[1] 2023-05-20 user: I adopted a dog" and scope == "u1"
+    assert out["response_id"] == "id-?xy"   # clean_text 把孤立代理项换成 ?、去掉 NUL
+    assert out["system_fingerprint"] is None and out["created"] is None
+
+
+def test_prompt_keeps_uncertainty_and_no_invented_dates():
+    # 主办方 10-10：定不下来的日期和事件状态要保留不确定性。这里只能核提示词写了这条要求，模型照不照做要看线上样本
+    p = extract.SYSTEM_PROMPT
+    assert "do not invent one" in p and "never write a planned or possible event as done" in p
+    assert extract.PROMPT_VERSION == "x2"

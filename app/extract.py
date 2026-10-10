@@ -30,7 +30,7 @@ from .textutil import WEEKDAYS, count_tokens
 
 log = logging.getLogger("aml.extract")
 
-PROMPT_VERSION = "x1"
+PROMPT_VERSION = "x2"   # x2（10-10，主办方回信）：无日期不补日期；计划、可能、未确认的事保持原状，不写成已发生
 
 SYSTEM_PROMPT = """You turn one chunk of a conversation into memory notes for a long-term memory system. Later, someone will ask questions about the people in the conversation; your notes will be searched together with the original messages.
 
@@ -40,9 +40,10 @@ Return a JSON object: {"facts": [...], "summary": "..."}
 
 facts: at most 30 items, each {"text": "...", "subject": "...", "key": "..." or null}.
 - text: one self-contained sentence. Name the subject explicitly (no "he", "she", "I", "they"); write "The user" for the user when no name is given. Keep concrete details exactly as said: names, numbers, amounts, prices, places, titles, brands, durations, frequencies.
-- Dates: when the message has a date and the event's time is given or implied ("yesterday", "last weekend", "two weeks ago", "next Friday"), write the absolute date or period, e.g. "on 19 May 2023" or "in the week before 20 May 2023". If it cannot be resolved, keep the original words and add "(said on 20 May 2023)".
+- Dates: when the message has a date and the event's time is given or implied ("yesterday", "last weekend", "two weeks ago", "next Friday"), write the absolute date or period, e.g. "on 19 May 2023" or "in the week before 20 May 2023". If it cannot be resolved, keep the original words and add "(said on 20 May 2023)". If the message has no date, do not invent one: give the event's time only as the message states it, or leave it out.
 - Record what people did, have, own, bought, visited, finished, plan, decided, like and dislike, and their relationships, jobs, places, health, routines, preferences and goals.
 - Write negations and changes explicitly: "The user no longer owns a car; they sold it in April 2023." "The user moved from Boston to Denver in March 2023."
+- Keep plans, intentions, possibilities and unconfirmed events as such ("plans to", "is considering", "may", "was going to"); never write a planned or possible event as done, and never infer an outcome, result or current state that the message does not state. Keep cancellations and uncertainty as said ("cancelled", "not sure yet").
 - Write counts and amounts as stated in each message; do not add up across messages.
 - The assistant's suggestions are not facts about the user. Record them only when the user accepts or acts on one: "The user chose X, which the assistant had suggested." Do not record general knowledge the assistant explains.
 - One fact per item; do not merge unrelated facts. Skip greetings and small talk.
@@ -258,15 +259,17 @@ def _cache_delete(sha: str) -> None:
 
 
 def _cache_put(sha: str, output: dict, status: str, prompt_tokens: int | None, completion_tokens: int | None,
-               version: str | None = None, scope: str = "") -> None:
+               version: str | None = None, scope: str = "", input_text: str | None = None) -> None:
     """output 里除了 items/raw/model，还带回复的 id / system_fingerprint / created（主办方 10-10：仅凭模型名不足以核验身份，
-    要留足够的来源记录供私下复核）；scope 单独落列，复核时能按用户捞出他的全部抽取。"""
+    要留足够的来源记录供私下复核）；scope 单独落列，复核时能按用户捞出他的全部抽取；input_text 是送给模型的那一窗原文
+    （复审 #10-E1：键只是哈希，Add 后面的向量阶段失败时原文事务不会提交，没有这一列这行缓存就对不回来源）。"""
     with pool.connection() as conn:
         conn.execute("INSERT INTO extract_cache (input_sha, model, prompt_version, output, status, prompt_tokens, "
-                     "completion_tokens, user_id, response_id, system_fingerprint) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                     "ON CONFLICT (input_sha) DO NOTHING",
+                     "completion_tokens, user_id, response_id, system_fingerprint, input_window) "
+                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (input_sha) DO NOTHING",
                      (sha, config.EXTRACT_MODEL, version or PROMPT_VERSION, json.dumps(output, ensure_ascii=False), status,
-                      prompt_tokens, completion_tokens, scope or None, output.get("response_id"), output.get("system_fingerprint")))
+                      prompt_tokens, completion_tokens, scope or None, output.get("response_id"), output.get("system_fingerprint"),
+                      input_text))
         conn.commit()
 
 
@@ -280,9 +283,16 @@ class ReplyMeta(dict):
     """回复里能证明身份的字段：model、response_id、system_fingerprint、created。缺的就是 None。"""
 
 
+def _meta_str(v: object) -> str | None:
+    # 元数据也要进 jsonb：清掉 NUL 和孤立代理项，截长（复审 #10-C）
+    return " ".join(clean_text(v).split())[:200] if isinstance(v, str) else None
+
+
 def reply_meta(payload: dict) -> "ReplyMeta":
-    return ReplyMeta(model=payload.get("model"), response_id=payload.get("id"),
-                     system_fingerprint=payload.get("system_fingerprint"), created=payload.get("created"))
+    created = payload.get("created")
+    return ReplyMeta(model=_meta_str(payload.get("model")), response_id=_meta_str(payload.get("id")),
+                     system_fingerprint=_meta_str(payload.get("system_fingerprint")),
+                     created=created if isinstance(created, int) and not isinstance(created, bool) else None)
 
 
 async def _call(body: dict, kind: str = "extract", attempts: int | None = None) -> tuple[str | None, str, int | None, int | None, "ReplyMeta"]:
@@ -360,7 +370,7 @@ async def _extract_uncached(sha: str, body: dict, scope: str = "") -> list[Note]
                                               "raw": clean_text(content) if isinstance(content, str) else content,
                                               "model": meta.get("model"), "response_id": meta.get("response_id"),
                                               "system_fingerprint": meta.get("system_fingerprint"), "created": meta.get("created")},
-                            status, pt, ct, scope=scope)
+                            status, pt, ct, scope=scope, input_text=body["messages"][-1]["content"])
     return notes
 
 
