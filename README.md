@@ -32,7 +32,7 @@ Requires PostgreSQL 16 with the `vector` extension. `deploy/` holds the systemd 
 | Search | `POST https://43.128.132.126/search` |
 | Health | `GET https://43.128.132.126/health` (no auth) |
 | Auth | `Authorization: Bearer <token>` (token issued with the evaluation key, not published) |
-| Models | Embedding `text-embedding-v4` (Alibaba Bailian, 1024-dim); reranker `gte-rerank-v2` (Alibaba Bailian) on the first 200 fused candidates. **No generative LLM is used in Add or Search.** |
+| Models | Embedding `text-embedding-v4` (Alibaba Bailian, 1024-dim); reranker `gte-rerank-v2` (Alibaba Bailian) on the first 200 fused candidates. Second shot (`full-2-candidate-b3-*`): Add also sends each request's messages to `gpt-4o-mini-2024-07-18` (via AiHubMix) to extract fact lines and a session summary that are stored next to the raw messages; Search does no generation. Details and the disclosure text: `docs/b3-extraction.md`. First Full: no generative LLM in Add or Search. |
 | Host | one server: 2 vCPU / 4 GB RAM / 90 GB disk, Ubuntu 24.04, PostgreSQL 16 + pgvector, uvicorn behind Caddy (TLS) |
 | Tested concurrency | Add 16 / Search 16 (official Smoke, 2026-09-29: 134 Add + 48 Search, all 200) |
 | Limits | `top_k` ≤ 100; response packed whole under a 60k-token budget, earlier items first; Add is idempotent on `(user_id, request_id)` |

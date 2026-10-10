@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS extract_cache (
 ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS user_id TEXT;
 ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS response_id TEXT;
 ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS system_fingerprint TEXT;
+ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS input_window TEXT;   -- 送给模型的那一窗原文（复审 #10-E1：来源留档要独立于 Add 是否成功）
 CREATE INDEX IF NOT EXISTS extract_cache_user_idx ON extract_cache (user_id);
 """
 
