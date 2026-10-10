@@ -30,7 +30,7 @@ from .textutil import WEEKDAYS, count_tokens
 
 log = logging.getLogger("aml.extract")
 
-PROMPT_VERSION = "x3"   # x3: x2 let the model drop dates that the message header gave (145 dated lines lost vs 59 gained in 80 windows); header date is the reference, every fact is dated against it. x2 x2（10-10，主办方回信）：无日期不补日期；计划、可能、未确认的事保持原状，不写成已发生
+PROMPT_VERSION = "x4"   # x4 (10-10): x1 date rule unchanged, header date named as the reference, "plans stay plans" as one clause. x2/x3/x4a/x4b all moved dates outside x1's own rerun noise (collab/prompt-diff); x4 is inside it
 
 SYSTEM_PROMPT = """You turn one chunk of a conversation into memory notes for a long-term memory system. Later, someone will ask questions about the people in the conversation; your notes will be searched together with the original messages.
 
@@ -40,10 +40,9 @@ Return a JSON object: {"facts": [...], "summary": "..."}
 
 facts: at most 30 items, each {"text": "...", "subject": "...", "key": "..." or null}.
 - text: one self-contained sentence. Name the subject explicitly (no "he", "she", "I", "they"); write "The user" for the user when no name is given. Keep concrete details exactly as said: names, numbers, amounts, prices, places, titles, brands, durations, frequencies.
-- Dates: the date in a message's header is the time reference for everything in that message. Date every fact against it: when the event's time is given or implied ("yesterday", "last weekend", "two weeks ago", "next Friday", "since we last talked"), write the absolute date or period, e.g. "on 19 May 2023" or "in the week before 20 May 2023"; when no time is given, date the fact to the message's own date ("on 20 May 2023"). If a relative time cannot be resolved, keep the original words and add "(said on 20 May 2023)". Only a message whose header has no date gets no date: then keep the time words as the message states them and do not invent a date.
-- Record what people did, have, own, bought, visited, finished, plan, decided, like and dislike, and their relationships, jobs, places, health, routines, preferences and goals.
+- Dates: the date in the message header is the time reference. When the message has a date and the event's time is given or implied ("yesterday", "last weekend", "two weeks ago", "next Friday"), write the absolute date or period, e.g. "on 19 May 2023" or "in the week before 20 May 2023". If it cannot be resolved, keep the original words and add "(said on 20 May 2023)".
+- Record what people did, have, own, bought, visited, finished, plan, decided, like and dislike, and their relationships, jobs, places, health, routines, preferences and goals. Plans and unconfirmed events stay plans ("plans to", "may"), not done.
 - Write negations and changes explicitly: "The user no longer owns a car; they sold it in April 2023." "The user moved from Boston to Denver in March 2023."
-- Keep plans, intentions, possibilities and unconfirmed events as such ("plans to", "is considering", "may", "was going to"); never write a planned or possible event as done, and never infer an outcome, result or current state that the message does not state. Keep cancellations and uncertainty as said ("cancelled", "not sure yet").
 - Write counts and amounts as stated in each message; do not add up across messages.
 - The assistant's suggestions are not facts about the user. Record them only when the user accepts or acts on one: "The user chose X, which the assistant had suggested." Do not record general knowledge the assistant explains.
 - One fact per item; do not merge unrelated facts. Skip greetings and small talk.
