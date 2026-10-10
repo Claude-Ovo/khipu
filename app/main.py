@@ -505,7 +505,7 @@ async def _prepare_add(req: AddRequest) -> tuple[list, dict[str, list[float]]]:
     notes = []
     if config.EXTRACT_ENABLED and req.messages:
         try:
-            notes = await extract_request([m.model_dump() for m in req.messages])
+            notes = await extract_request([m.model_dump() for m in req.messages], scope=req.user_id)
         except ExtractUnavailable as e:
             log.warning("add %s: extraction unavailable: %s", req.request_id, e)
             raise HTTPException(status_code=503, detail="extraction temporarily unavailable, retry later") from e

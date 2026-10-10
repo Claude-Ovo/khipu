@@ -175,7 +175,7 @@ async def build_chain(query: str, lines: list[str]) -> str | None:
             usage.chain_cached()
             events = [Event(**it) for it in cached.get("items", [])]
         else:
-            content, status, pt, ct, model = await asyncio.wait_for(_call(body, kind="chain", attempts=config.CHAIN_ATTEMPTS),
+            content, status, pt, ct, meta = await asyncio.wait_for(_call(body, kind="chain", attempts=config.CHAIN_ATTEMPTS),
                                                                    timeout=config.CHAIN_TIMEOUT_S)
             events: list[Event] = []
             if content is not None:
@@ -184,7 +184,7 @@ async def build_chain(query: str, lines: list[str]) -> str | None:
                     status = "empty:parse"
             if status != "ok":
                 log.warning("chain %s kept empty (%s)", sha[:12], status)
-            await asyncio.to_thread(_cache_put, sha, {"items": [ev.__dict__ for ev in events], "raw": content, "model": model},
+            await asyncio.to_thread(_cache_put, sha, {"items": [ev.__dict__ for ev in events], "raw": content, "model": meta.get("model")},
                                     status, pt, ct, PROMPT_VERSION)
     except (ExtractUnavailable, asyncio.TimeoutError) as e:
         usage.chain_skipped()

@@ -36,7 +36,8 @@ def _resp(status: int, payload: dict | None = None, text: str = "") -> httpx.Res
 
 
 def _completion(content: str, pt: int = 100, ct: int = 20, model: str = "gpt-4o-mini-2024-07-18") -> dict:
-    return {"model": model, "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+    return {"id": "chatcmpl-test", "system_fingerprint": "fp_test", "created": 1700000000, "model": model,
+            "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": pt, "completion_tokens": ct}}
 
 
@@ -67,9 +68,9 @@ def _offline(monkeypatch):
     store: dict[str, tuple] = {}
     monkeypatch.setattr(config, "EXTRACT_API_KEY", "test-key")
     monkeypatch.setattr(config, "EXTRACT_TOKEN_CAP", 0)
-    def put(sha, out, status, pt, ct):
+    def put(sha, out, status, pt, ct, version=None, scope=""):
         json.dumps(out, ensure_ascii=False).encode("utf-8")   # 库里是 jsonb + UTF-8：编不过去就是真实路径会 500（复审 #9-E）
-        store.setdefault(sha, (out, status))
+        store.setdefault(sha, (out, status, scope))
     monkeypatch.setattr(extract, "_cache_get", lambda sha: store[sha][0] if sha in store else None)
     monkeypatch.setattr(extract, "_cache_put", put)
     monkeypatch.setattr(extract, "_cache_delete", lambda sha: store.pop(sha, None))
@@ -176,8 +177,11 @@ def test_cache_miss_then_hit(monkeypatch, _offline):
     again = _run(extract.extract_window("[1] Caroline: I adopted a dog"))
     assert first == again and len(first) == 2
     assert s.calls == 1
-    (out, status), = _offline.values()
+    (out, status, scope), = _offline.values()
     assert status == "ok" and out["raw"] == GOOD and out["model"] == "gpt-4o-mini-2024-07-18"
+    # 主办方 10-10：仅凭模型名不足以核验身份，回复的 id / system_fingerprint / created 一起留档
+    assert (out["response_id"], out["system_fingerprint"], out["created"]) == ("chatcmpl-test", "fp_test", 1700000000)
+    assert scope == ""
     u = httpclient.usage.snapshot()["extract"]
     assert (u["calls"], u["ok"], u["prompt_tokens"], u["completion_tokens"], u["cache_hits"]) == (1, 1, 120, 30, 1)
 
@@ -204,7 +208,7 @@ def test_400_and_moderation_kept_empty_and_cached(monkeypatch, _offline):
     assert _run(extract.extract_window("[1] a")) == []   # 第二次走缓存，不再花钱
     assert _run(extract.extract_window("[1] b")) == []
     assert s.calls == 2
-    assert sorted(st for _, st in _offline.values()) == ["empty:http400", "empty:http403"]
+    assert sorted(v[1] for v in _offline.values()) == ["empty:http400", "empty:http403"]
     assert httpclient.usage.snapshot()["extract"]["empty"] == 2
 
 
@@ -212,7 +216,7 @@ def test_parse_failure_kept_empty_and_cached(monkeypatch, _offline):
     s = _Script([_resp(200, _completion("not json at all"))])
     _use(monkeypatch, s)
     assert _run(extract.extract_window("[1] a")) == []
-    assert [st for _, st in _offline.values()] == ["empty:parse"]
+    assert [v[1] for v in _offline.values()] == ["empty:parse"]
 
 
 @pytest.mark.parametrize("status", [401, 402, 404])
@@ -439,7 +443,7 @@ def test_raw_with_lone_surrogate_survives_cache_serialization(monkeypatch, _offl
     body = json.dumps(_completion(bad_raw), ensure_ascii=True)
     _use(monkeypatch, _Script([_resp(200, text=body)]))
     assert len(_run(extract.extract_window("[1] sur"))) == 2   # put 桩会对整个 payload 做 UTF-8 编码，编不过就抛
-    (out, status), = _offline.values()
+    (out, status, _), = _offline.values()
     assert status == "ok" and "\ud800" not in out["raw"]
 
 
@@ -625,3 +629,28 @@ def test_box_puts_lead_first_and_counts_it(monkeypatch):
     lead = [{"id": "timeline:x", "content": "[timeline]\n- 2023-05-01: a", "text": "[timeline]\n- 2023-05-01: a", "score": 1.0}]
     out = search._box(idx, [0, 1, 2, 3, 4], {}, 3, None, lead)
     assert [it["id"] for it in out] == ["timeline:x", rows[0].id, rows[1].id]
+
+
+# ---------- 主办方 10-10 回信：缓存按用户隔离 ----------
+
+def test_cache_is_scoped_by_user(monkeypatch, _offline):
+    # 两个用户发来一字不差的原文：各抽各的（两次调用、两条缓存、各记各的 user_id），同一用户重复才命中
+    s = _Script([_resp(200, _completion(GOOD)), _resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    assert len(_run(extract.extract_window("[1] Caroline: I adopted a dog", scope="user-a"))) == 2
+    assert len(_run(extract.extract_window("[1] Caroline: I adopted a dog", scope="user-b"))) == 2
+    assert len(_run(extract.extract_window("[1] Caroline: I adopted a dog", scope="user-a"))) == 2
+    assert s.calls == 2
+    assert sorted(v[2] for v in _offline.values()) == ["user-a", "user-b"]
+    assert httpclient.usage.snapshot()["extract"]["cache_hits"] == 1
+    b = extract.request_body("[1] x")
+    assert extract.body_sha(b, "user-a") != extract.body_sha(b, "user-b") != extract.body_sha(b)
+
+
+def test_extract_request_passes_user_scope(monkeypatch, _offline):
+    s = _Script([_resp(200, _completion(GOOD))])
+    _use(monkeypatch, s)
+    msgs = [{"role": "user", "content": "I adopted a dog named Max.", "timestamp": None}]
+    assert len(_run(extract.extract_request(msgs, scope="user-z"))) == 2
+    (out, status, scope), = _offline.values()
+    assert scope == "user-z" and status == "ok"

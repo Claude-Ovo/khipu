@@ -151,9 +151,11 @@ def request_body(window: str) -> dict:
     return body
 
 
-def body_sha(body: dict) -> str:
-    """缓存键：整个请求体（模型、提示词、seed、供应商、原文）。改了提示词不用手动换版本号，键自己会变。"""
-    return hashlib.sha256((PROMPT_VERSION + "\n" + json.dumps(body, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
+def body_sha(body: dict, scope: str = "") -> str:
+    """缓存键：整个请求体（模型、提示词、seed、供应商、原文）+ scope（user_id）。改了提示词不用手动换版本号，键自己会变。
+    scope 进键是主办方 10-10 回信的要求（缓存保持评测与用户隔离）：两个用户发来一字不差的原文也各抽各的，
+    一个用户的派生记忆只来自他自己的 Add；Smoke 和 Full 的用户不同，也就互不串。"""
+    return hashlib.sha256((PROMPT_VERSION + "\n" + scope + "\n" + json.dumps(body, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
 
 
 # ---------- 输出：模型回复 → 笔记 ----------
@@ -256,12 +258,15 @@ def _cache_delete(sha: str) -> None:
 
 
 def _cache_put(sha: str, output: dict, status: str, prompt_tokens: int | None, completion_tokens: int | None,
-               version: str | None = None) -> None:
+               version: str | None = None, scope: str = "") -> None:
+    """output 里除了 items/raw/model，还带回复的 id / system_fingerprint / created（主办方 10-10：仅凭模型名不足以核验身份，
+    要留足够的来源记录供私下复核）；scope 单独落列，复核时能按用户捞出他的全部抽取。"""
     with pool.connection() as conn:
         conn.execute("INSERT INTO extract_cache (input_sha, model, prompt_version, output, status, prompt_tokens, "
-                     "completion_tokens) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (input_sha) DO NOTHING",
+                     "completion_tokens, user_id, response_id, system_fingerprint) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                     "ON CONFLICT (input_sha) DO NOTHING",
                      (sha, config.EXTRACT_MODEL, version or PROMPT_VERSION, json.dumps(output, ensure_ascii=False), status,
-                      prompt_tokens, completion_tokens))
+                      prompt_tokens, completion_tokens, scope or None, output.get("response_id"), output.get("system_fingerprint")))
         conn.commit()
 
 
@@ -271,8 +276,17 @@ def _notes_from(output: dict) -> list[Note]:
 
 # ---------- 调用 ----------
 
-async def _call(body: dict, kind: str = "extract", attempts: int | None = None) -> tuple[str | None, str, int | None, int | None, str | None]:
-    """返回 (回复正文, 状态, prompt_tokens, completion_tokens, 回复里报的模型名)。
+class ReplyMeta(dict):
+    """回复里能证明身份的字段：model、response_id、system_fingerprint、created。缺的就是 None。"""
+
+
+def reply_meta(payload: dict) -> "ReplyMeta":
+    return ReplyMeta(model=payload.get("model"), response_id=payload.get("id"),
+                     system_fingerprint=payload.get("system_fingerprint"), created=payload.get("created"))
+
+
+async def _call(body: dict, kind: str = "extract", attempts: int | None = None) -> tuple[str | None, str, int | None, int | None, "ReplyMeta"]:
+    """返回 (回复正文, 状态, prompt_tokens, completion_tokens, 回复元数据 ReplyMeta)。
     状态 ok，或 empty:<原因>（确定性的坏结果，正文为 None）。
     kind 只决定计到哪个用量计数器（extract = Add 时抽取，chain = Search 时时间链），调用、重试、分类完全一样。"""
     delay = 1.0
@@ -296,7 +310,7 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
             if r.status_code >= 400:  # 400 / 403 内容审核 / 413 太长：输入本身的问题，按空结果收下
                 count(False, None, None, ms)
                 log.warning("%s %s, keeping empty: %s", kind, r.status_code, r.text[:300])
-                return None, f"empty:http{r.status_code}", None, None, None
+                return None, f"empty:http{r.status_code}", None, None, ReplyMeta()
             payload = r.json()
             choices = payload.get("choices") if isinstance(payload, dict) else None
             if not choices:  # OpenRouter 偶尔 200 里装着 error
@@ -304,7 +318,8 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
             content = choices[0]["message"].get("content") or ""
             u = payload.get("usage") or {}
             pt, ct = u.get("prompt_tokens"), u.get("completion_tokens")
-            model = payload.get("model")
+            meta = reply_meta(payload)
+            model = meta["model"]
             if isinstance(model, str) and not model_allowed(model):
                 # 中转换了模型（审查 #8-1）：这不是 gpt-4o-mini 的输出，收下就违反学术榜规则，还会进缓存被主办方复现时对不上。
                 # 当作一次失败重试；连着都不对就 ExtractUnavailable → Add 503，等人来处理。没报模型名的回复照收（有的中转不回这个字段）
@@ -318,7 +333,7 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
                 log.warning("%s: relay reply has no model field (expected %s), keeping", kind, config.EXTRACT_MODEL)
             log.info("%s ok in=%s out=%s %dms attempt=%d finish=%s model=%s", kind, pt, ct, ms, attempt + 1,
                      choices[0].get("finish_reason"), model)
-            return content, "ok", pt, ct, model
+            return content, "ok", pt, ct, meta
         except (httpx.HTTPError, _Retry, ValueError, KeyError, TypeError, IndexError, AttributeError) as e:
             ms = ms or int((time.monotonic() - t0) * 1000)
             if not getattr(e, "counted", False):
@@ -331,8 +346,8 @@ async def _call(body: dict, kind: str = "extract", attempts: int | None = None) 
     raise ExtractUnavailable("no attempts configured")
 
 
-async def _extract_uncached(sha: str, body: dict) -> list[Note]:
-    content, status, pt, ct, model = await _call(body)
+async def _extract_uncached(sha: str, body: dict, scope: str = "") -> list[Note]:
+    content, status, pt, ct, meta = await _call(body)
     notes: list[Note] = []
     if content is not None:
         notes, ok = parse_output(content)
@@ -342,8 +357,10 @@ async def _extract_uncached(sha: str, body: dict) -> list[Note]:
         usage.extract_gave_empty()
         log.warning("extract window %s kept empty (%s)", sha[:12], status)
     await asyncio.to_thread(_cache_put, sha, {"items": [asdict(n) for n in notes],
-                                              "raw": clean_text(content) if isinstance(content, str) else content, "model": model},
-                            status, pt, ct)
+                                              "raw": clean_text(content) if isinstance(content, str) else content,
+                                              "model": meta.get("model"), "response_id": meta.get("response_id"),
+                                              "system_fingerprint": meta.get("system_fingerprint"), "created": meta.get("created")},
+                            status, pt, ct, scope=scope)
     return notes
 
 
@@ -355,9 +372,9 @@ def _mark_retrieved(f: asyncio.Future) -> None:
         f.exception()  # 没人等的时候别报「exception was never retrieved」
 
 
-async def extract_window(window: str) -> list[Note]:
+async def extract_window(window: str, scope: str = "") -> list[Note]:
     body = request_body(window)
-    sha = body_sha(body)
+    sha = body_sha(body, scope)
     fut = _inflight.get(sha)
     if fut is not None:  # 同一窗已经有人在办（平台并发重试同一个请求、或两个请求带着相同的原文）：等它的结果
         try:
@@ -367,7 +384,7 @@ async def extract_window(window: str) -> list[Note]:
             if me is not None and getattr(me, "cancelling", lambda: 0)() > 0:
                 raise  # 是自己被取消（整次 Add 超时/断开），不是领头的出事：别替别人重跑（复审 #9-A）
             if fut.cancelled():  # 领头的请求被取消了，自己来
-                return await extract_window(window)
+                return await extract_window(window, scope)
             raise
     # 先登记再查缓存：登记和上面的检查之间没有 await，进程内不会有两个人同时去调模型；
     # 领头的写完缓存才注销，注销之后来的人一定能在缓存里查到
@@ -385,7 +402,7 @@ async def extract_window(window: str) -> list[Note]:
             usage.extract_cached()
             notes = _notes_from(cached)
         else:
-            notes = await _extract_uncached(sha, body)
+            notes = await _extract_uncached(sha, body, scope)
         fut.set_result(notes)
         return notes
     except asyncio.CancelledError:
@@ -398,8 +415,8 @@ async def extract_window(window: str) -> list[Note]:
         _inflight.pop(sha, None)
 
 
-async def extract_request(messages: list[dict]) -> list[Note]:
-    """一个 Add 请求的全部笔记，按窗的顺序；跨窗重复的事实只留第一次。"""
+async def extract_request(messages: list[dict], scope: str = "") -> list[Note]:
+    """一个 Add 请求的全部笔记，按窗的顺序；跨窗重复的事实只留第一次。scope = user_id，进缓存键（见 body_sha）。"""
     if not config.EXTRACT_API_KEY:
         raise ExtractUnavailable("EXTRACT_API_KEY is empty")
     windows = build_windows(messages)
@@ -408,7 +425,7 @@ async def extract_request(messages: list[dict]) -> list[Note]:
     try:
         # 整次 Add 的总时限（审查 #8-2）：单次读超时 60 s 不包含排队、重试和多窗，平台 Add 上限 30 分钟。
         # 超了就 503 让平台稍后重试；被取消的窗由 extract_window 自己清理（领头的注销，等待者重来）
-        results = await asyncio.wait_for(asyncio.gather(*(extract_window(w) for w in windows)),
+        results = await asyncio.wait_for(asyncio.gather(*(extract_window(w, scope) for w in windows)),
                                          timeout=config.EXTRACT_REQUEST_TIMEOUT_S or None)
     except asyncio.TimeoutError as e:
         raise ExtractUnavailable(f"request deadline {config.EXTRACT_REQUEST_TIMEOUT_S}s exceeded over {len(windows)} window(s)") from e
