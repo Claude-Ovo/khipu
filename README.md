@@ -59,11 +59,11 @@ The numbers above are BM25-only. With the vector channel (v0.3.1, first 200 ques
 
 ## Attribution
 
-This is original code, but the design borrows ideas from four open-source projects, read in source. See `ATTRIBUTION.md` for what was taken from each and what was changed. No code was copied.
+Original code. The retrieval core (multi-channel lexical/vector/literal retrieval, weighted RRF, relevance-only admission, cross-encoder rerank, verbatim storage, whole-unit packing) is our own earlier work from [Tidemark](https://github.com/Claude-Ovo/tidemark) and a private retrieval sidecar (ob-recall). Ideas taken from outside projects, read in source, are listed in `ATTRIBUTION.md` with what was changed; no code was copied.
 
 - [twig-memory](https://github.com/qimingjiu/twig-memory) — the shape of a minimal AML adapter and its offline LoCoMo replay
-- [MemoryConstellations](https://github.com/ClaraShafiq/MemoryConstellations) — RRF fusion, intent-weighted channels, entity channel with a virtual rank, dual-hit confidence
-- [Ombre-Brain](https://github.com/P0luz/Ombre-Brain) — verbatim storage, whole-unit packing, literal-match guard, relevance-only admission, idempotent writes
+- [MemoryConstellations](https://github.com/ClaraShafiq/MemoryConstellations) — intent-weighted channels, entity channel with a virtual rank, name normalisation
+- [Ombre-Brain](https://github.com/P0luz/Ombre-Brain) — the no-rewrite discipline and the relevance-only admission gate sketched in its comments
 - [write-him-back](https://github.com/reneyuxi0402/write-him-back) — every returned memory must be self-sufficient for a reader with no context
 
 ## License
