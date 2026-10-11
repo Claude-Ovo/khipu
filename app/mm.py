@@ -114,20 +114,71 @@ def image_path(sha: str, mime: str) -> Path:
     return Path(config.MM_IMAGE_DIR) / sha[:2] / f"{sha}.{_EXT.get(mime, 'bin')}"
 
 
+def shrink(data: bytes, max_px: int) -> tuple[str, bytes]:
+    """最长边缩到 max_px 以内、重编码成 JPEG（质量 85）。10-11 实测：Mem-Gallery 的原图直接送 gpt-4o-mini 一张两万多 token，
+    缩到 1024 后一千上下，描述质量够用。缩不了（Pillow 没装、图坏了）就原样返回。"""
+    try:
+        from io import BytesIO
+        from PIL import Image
+        im = Image.open(BytesIO(data))
+        im.load()
+        w, h = im.size
+        if max(w, h) <= max_px and im.format == "JPEG":
+            return "image/jpeg", data
+        if max(w, h) > max_px:
+            im.thumbnail((max_px, max_px))
+        if im.mode not in ("RGB", "L"):
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im.convert("RGBA"), mask=im.convert("RGBA").getchannel("A"))
+            im = bg
+        out = BytesIO()
+        im.save(out, format="JPEG", quality=85, optimize=True)
+        return "image/jpeg", out.getvalue()
+    except Exception as e:  # noqa: BLE001  图坏了或 Pillow 缺失：原样送，别让一张图把 Add 打成 500
+        log.warning("mm: shrink failed (%s), sending original", type(e).__name__)
+        return None, data
+
+
+def small_path(sha: str) -> Path:
+    return Path(config.MM_IMAGE_DIR) / sha[:2] / f"{sha}.s{config.MM_SEND_MAX_PX}.jpg"
+
+
+def _write_atomic(p: Path, data: bytes) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(p)
+
+
 def store_image(ref: ImageRef) -> Path:
+    """原图存盘（留档、复核），旁边放一份缩小版（送模型、当证据返回）。"""
     p = image_path(ref.sha, ref.mime)
     if not p.exists():
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_bytes(ref.data)
-        tmp.replace(p)
+        _write_atomic(p, ref.data)
+    sp = small_path(ref.sha)
+    if not sp.exists():
+        mime, data = shrink(ref.data, config.MM_SEND_MAX_PX)
+        if mime == "image/jpeg":
+            _write_atomic(sp, data)
     return p
 
 
+def send_bytes(ref: ImageRef) -> tuple[str, bytes]:
+    sp = small_path(ref.sha)
+    if sp.exists():
+        return "image/jpeg", sp.read_bytes()
+    mime, data = shrink(ref.data, config.MM_SEND_MAX_PX)
+    return (mime or ref.mime), data
+
+
 def _find_image(sha12: str) -> Path | None:
+    """返回证据用的那份：优先缩小版，没有就原图。"""
     d = Path(config.MM_IMAGE_DIR) / sha12[:2]
     if not d.is_dir():
         return None
+    small = [p for p in d.glob(f"{sha12}*.s*.jpg") if not p.name.endswith(".tmp")]
+    if small:
+        return small[0]
     for p in d.glob(f"{sha12}*"):
         if p.suffix != ".tmp":
             return p
@@ -157,7 +208,8 @@ def _cache_put(key: str, ref: ImageRef, scope: str, caption: str, status: str, p
 
 
 def caption_body(ref: ImageRef) -> dict:
-    url = f"data:{ref.mime};base64," + base64.b64encode(ref.data).decode("ascii")
+    mime, data = send_bytes(ref)
+    url = f"data:{mime};base64," + base64.b64encode(data).decode("ascii")
     body = {
         "model": config.EXTRACT_MODEL,
         "messages": [{"role": "system", "content": CAPTION_PROMPT},
@@ -239,7 +291,7 @@ def attach_images(items: list[dict]) -> list[dict]:
             data = p.read_bytes()
             if used + len(data) > config.MM_RETURN_BYTES:
                 continue
-            mime = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(p.suffix[1:], "image/jpeg")
+            mime = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(p.suffix[1:], "image/jpeg")   # 缩小版一律 .jpg
             parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64," + base64.b64encode(data).decode("ascii")}})
             seen.add(sha12)
             n += 1
