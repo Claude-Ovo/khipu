@@ -69,6 +69,26 @@ ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS response_id TEXT;
 ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS system_fingerprint TEXT;
 ALTER TABLE extract_cache ADD COLUMN IF NOT EXISTS input_window TEXT;   -- 送给模型的那一窗原文（复审 #10-E1：来源留档要独立于 Add 是否成功）
 CREATE INDEX IF NOT EXISTS extract_cache_user_idx ON extract_cache (user_id);
+
+-- 多模态（2026-10-11）：图片描述缓存。键 = (描述提示词版本, user_id, 模型, 图片 sha256)，按用户隔离；留回复身份供复核。
+-- 文本赛道的库也会建这张空表，无害。
+CREATE TABLE IF NOT EXISTS image_cache (
+    cache_sha      TEXT PRIMARY KEY,
+    image_sha      TEXT NOT NULL,
+    user_id        TEXT,
+    mime           TEXT,
+    bytes          INTEGER,
+    caption        TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    model          TEXT,
+    prompt_version TEXT,
+    response_id    TEXT,
+    system_fingerprint TEXT,
+    prompt_tokens  INTEGER,
+    completion_tokens INTEGER,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS image_cache_user_idx ON image_cache (user_id);
 """
 
 
