@@ -30,7 +30,7 @@ from .textutil import WEEKDAYS, count_tokens
 
 log = logging.getLogger("aml.extract")
 
-PROMPT_VERSION = "x4"   # x4 (10-10): x1 date rule unchanged, header date named as the reference, "plans stay plans" as one clause. x2/x3/x4a/x4b all moved dates outside x1's own rerun noise (collab/prompt-diff); x4 is inside it
+PROMPT_VERSION = "x4"   # x4 (10-10): x1 date rule verbatim, header date named as the reference, "plans stay plans" as one clause. Heuristic 80-window diffs vs x1 output for x2/x3/x4a/x4b/x5/x6 in collab/prompt-diff (scorer tests/prompt_diff_score.py); x4 is the closest to x1 there. Not re-validated end to end; 10-06 answer numbers are x1's
 
 SYSTEM_PROMPT = """You turn one chunk of a conversation into memory notes for a long-term memory system. Later, someone will ask questions about the people in the conversation; your notes will be searched together with the original messages.
 
