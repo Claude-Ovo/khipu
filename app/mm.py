@@ -258,14 +258,130 @@ async def caption(ref: ImageRef, scope: str) -> str:
     return await asyncio.shield(fut)
 
 
+# ---------- EXIF：拍摄时间与 GPS（ATM-Bench 的照片全带；平台发的是原始字节，EXIF 就在里面） ----------
+
+def exif_info(data: bytes) -> tuple[str | None, float | None, float | None]:
+    """返回 (拍摄时间 'YYYY-MM-DD HH:MM', 纬度, 经度)。没有或读不出就是 None。"""
+    try:
+        from io import BytesIO
+        from PIL import Image
+        e = Image.open(BytesIO(data)).getexif()
+        d = e.get_ifd(0x8769).get(36867) or e.get(306)
+        when = None
+        if isinstance(d, str) and len(d) >= 16:
+            y, mo, dd = d[0:4], d[5:7], d[8:10]
+            if y.isdigit() and mo.isdigit() and dd.isdigit():
+                when = f"{y}-{mo}-{dd} {d[11:16]}"
+        g = e.get_ifd(0x8825)
+        lat = lon = None
+        if g and 2 in g and 4 in g:
+            def deg(v):
+                return float(v[0]) + float(v[1]) / 60 + float(v[2]) / 3600
+            lat = deg(g[2]) * (-1 if str(g.get(1, "N")).upper() == "S" else 1)
+            lon = deg(g[4]) * (-1 if str(g.get(3, "E")).upper() == "W" else 1)
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                lat = lon = None
+        return when, lat, lon
+    except Exception:  # noqa: BLE001
+        return None, None, None
+
+
+def exif_ts_ms(data: bytes) -> int | None:
+    """消息没带时间戳时用拍摄时间（当 UTC，和平台把钟面时间当 UTC 的做法一致）。"""
+    when, _, _ = exif_info(data)
+    if not when:
+        return None
+    try:
+        from datetime import datetime, timezone
+        return int(datetime.strptime(when, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+_geo_lock = asyncio.Lock()
+_geo_last = 0.0
+
+
+def _geo_key(lat: float, lon: float) -> str:
+    return f"{lat:.3f},{lon:.3f}"   # 约 100 m 一格；同一地点连拍共用一次查询
+
+
+def _geo_get(key: str) -> str | None:
+    with pool.connection() as conn:
+        row = conn.execute("SELECT place FROM geo_cache WHERE k = %s", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def _geo_put(key: str, lat: float, lon: float, place: str, raw: str | None) -> None:
+    with pool.connection() as conn:
+        conn.execute("INSERT INTO geo_cache (k, lat, lon, place, raw) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (k) DO NOTHING",
+                     (key, lat, lon, place, raw))
+        conn.commit()
+
+
+async def reverse_geocode(lat: float, lon: float) -> str:
+    """OpenStreetMap Nominatim 反查地址（不是模型，是查表；对外声明为外部依赖）。全进程串行、每秒至多 1 次（Nominatim 的使用政策），
+    结果按 100 m 网格缓存进库。查不到或超时返回空串，正文里只留经纬度。"""
+    global _geo_last
+    if not config.MM_GEOCODE:
+        return ""
+    key = _geo_key(lat, lon)
+    hit = await asyncio.to_thread(_geo_get, key)
+    if hit is not None:
+        return hit
+    import time
+    import httpx
+    async with _geo_lock:
+        hit = await asyncio.to_thread(_geo_get, key)
+        if hit is not None:
+            return hit
+        wait = _geo_last + 1.05 - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        place, raw = "", None
+        try:
+            async with httpx.AsyncClient(timeout=config.MM_GEOCODE_TIMEOUT_S, headers={"User-Agent": config.MM_GEOCODE_UA}) as c:
+                r = await c.get(config.MM_GEOCODE_URL, params={"lat": f"{lat:.6f}", "lon": f"{lon:.6f}", "format": "jsonv2", "zoom": 18,
+                                                              "addressdetails": 1, "accept-language": "en"})
+            _geo_last = time.monotonic()
+            if r.status_code == 200:
+                j = r.json()
+                place = " ".join(str(j.get("display_name", "")).split())[:300]
+                raw = json.dumps(j, ensure_ascii=False)[:4000]
+            else:
+                log.warning("mm: geocode %s -> %s", key, r.status_code)
+        except Exception as e:  # noqa: BLE001
+            _geo_last = time.monotonic()
+            log.warning("mm: geocode %s failed: %s", key, type(e).__name__)
+        if place or raw is not None:
+            await asyncio.to_thread(_geo_put, key, lat, lon, place, raw)
+        return place
+
+
+async def exif_line(ref: ImageRef) -> str:
+    """`Photo taken 2024-05-27 17:55 at <地址> (52.204, 0.127).` 没有 EXIF 就是空串。"""
+    when, lat, lon = await asyncio.to_thread(exif_info, ref.data)
+    if not when and lat is None:
+        return ""
+    parts = ["Photo taken"]
+    if when:
+        parts.append(when)
+    if lat is not None and lon is not None:
+        place = await reverse_geocode(lat, lon)
+        parts.append(f"at {place} ({lat:.4f}, {lon:.4f})" if place else f"at ({lat:.4f}, {lon:.4f})")
+    return " ".join(parts) + "."
+
+
 async def resolve_text(text: str, images: list[ImageRef], scope: str) -> str:
-    """把占位符接上描述：`[image <sha12>] <描述> Text in image: …`。图片先存盘（返回证据时按 sha 找）。"""
+    """把占位符接上描述：`[image <sha12>] Photo taken … at …. <描述> Text in image: …`。图片先存盘（返回证据时按 sha 找）。"""
     if not images:
         return text
     await asyncio.to_thread(lambda: [store_image(r) for r in images])
-    caps = await asyncio.gather(*(caption(r, scope) for r in images))
-    for ref, cap in zip(images, caps):
-        text = text.replace(ref.tag, f"{ref.tag} {cap}" if cap else f"{ref.tag} (photo)", 1)
+    caps, exifs = await asyncio.gather(asyncio.gather(*(caption(r, scope) for r in images)),
+                                       asyncio.gather(*(exif_line(r) for r in images)))
+    for ref, cap, ex in zip(images, caps, exifs):
+        body = " ".join(s for s in (ex, cap or "(photo)") if s)
+        text = text.replace(ref.tag, f"{ref.tag} {body}", 1)
     return text
 
 
