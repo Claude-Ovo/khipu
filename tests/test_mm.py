@@ -76,7 +76,7 @@ def test_caption_cached_per_user_and_resolved_into_text(monkeypatch, imgdir, off
     async def fake_call(body, kind="extract", attempts=None):
         calls.append(body)
         url = body["messages"][1]["content"][1]["image_url"]["url"]
-        assert url.startswith("data:image/png;base64,") and body["model"] == config.EXTRACT_MODEL
+        assert url.startswith("data:image/jpeg;base64,") and body["model"] == config.EXTRACT_MODEL   # 送模型的是缩小版 JPEG
         return "A small white dog on a sofa. Text in image: none", "ok", 500, 30, {"model": config.EXTRACT_MODEL, "response_id": "r1"}
 
     import app.extract as ex
@@ -113,8 +113,8 @@ def test_attach_images_returns_original_images_in_order_with_caps(monkeypatch, i
     monkeypatch.setattr(config, "MM_RETURN_IMAGES", 5)
     out = mm.attach_images(json.loads(json.dumps(items)))
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url", "image_url"]
-    assert out[0]["content"][1]["image_url"]["url"] == PNG_URI
-    assert out[0]["content"][2]["image_url"]["url"] == JPG_URI
+    assert out[0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")   # 缩小版一律 JPEG
+    assert out[0]["content"][2]["image_url"]["url"] == JPG_URI                                # 假 JPEG 缩不了：原样
     assert [p["type"] for p in out[1]["content"]] == ["text"]          # 同一张图只带一次
     assert out[2]["content"] == [{"type": "text", "text": items[2]["content"]}]
     assert out[0]["text"] == "x"                                        # text 仍是字符串
@@ -122,9 +122,24 @@ def test_attach_images_returns_original_images_in_order_with_caps(monkeypatch, i
     out = mm.attach_images(json.loads(json.dumps(items)))
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url"]
     monkeypatch.setattr(config, "MM_RETURN_IMAGES", 5)
-    monkeypatch.setattr(config, "MM_RETURN_BYTES", len(PNG))
+    monkeypatch.setattr(config, "MM_RETURN_BYTES", len(mm.small_path(a.sha).read_bytes()))
     out = mm.attach_images(json.loads(json.dumps(items)))
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url"]   # 字节上限
+
+
+def test_shrink_caps_long_side_and_keeps_original(imgdir, monkeypatch):
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO(); Image.new("RGB", (3000, 2000), (200, 30, 30)).save(buf, format="PNG"); big = buf.getvalue()
+    monkeypatch.setattr(config, "MM_SEND_MAX_PX", 1024)
+    mime, data = mm.shrink(big, 1024)
+    assert mime == "image/jpeg" and Image.open(BytesIO(data)).size == (1024, 683) and len(data) < len(big)
+    ref = mm.ImageRef(hashlib.sha256(big).hexdigest(), "image/png", big)
+    mm.store_image(ref)
+    assert mm.image_path(ref.sha, "image/png").read_bytes() == big          # 原图原样留档
+    m2, d2 = mm.send_bytes(ref)
+    assert m2 == "image/jpeg" and d2 == mm.small_path(ref.sha).read_bytes()  # 送模型的是缩小版
+    assert mm.shrink(b"not an image", 1024) == (None, b"not an image")
 
 
 def test_message_model_text_track_unchanged(monkeypatch):

@@ -142,5 +142,6 @@ MM_IMAGE_DIR = os.environ.get("MM_IMAGE_DIR", "/srv/aml/mm/images")
 MM_IMAGE_MAX_BYTES = _int("MM_IMAGE_MAX_BYTES", 10 * 1024 * 1024)   # 合同：单图解码后至多 10 MiB
 MM_DETAIL = os.environ.get("MM_DETAIL", "auto")                     # gpt-4o-mini 看图的 detail：auto / low / high
 MM_CAPTION_MAX_TOKENS = _int("MM_CAPTION_MAX_TOKENS", 400)
+MM_SEND_MAX_PX = _int("MM_SEND_MAX_PX", 1024)                      # 送模型和当证据返回的缩小版：最长边像素（原图照存）
 MM_RETURN_IMAGES = _int("MM_RETURN_IMAGES", 5)                      # 一次 Search 最多带回几张原图
 MM_RETURN_BYTES = _int("MM_RETURN_BYTES", 6 * 1024 * 1024)          # 带回的原图合计字节上限
