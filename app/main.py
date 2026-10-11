@@ -521,6 +521,8 @@ async def _prepare_add(req: AddRequest) -> tuple[list, dict[str, list[float]]]:
         try:
             for m in req.messages:
                 if m.images:
+                    if m.timestamp is None:   # 平台没给时间戳时用照片的拍摄时间（EXIF）
+                        m.timestamp = next((t for t in (mm.exif_ts_ms(r.data) for r in m.images) if t), None)
                     m.content = await mm.resolve_text(m.content, m.images, scope=req.user_id)
         except ExtractUnavailable as e:
             log.warning("add %s: image caption unavailable: %s", req.request_id, e)

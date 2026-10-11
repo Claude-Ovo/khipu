@@ -89,6 +89,16 @@ CREATE TABLE IF NOT EXISTS image_cache (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS image_cache_user_idx ON image_cache (user_id);
+
+-- 多模态：EXIF GPS 反查地址的缓存（Nominatim），键是 100 m 网格
+CREATE TABLE IF NOT EXISTS geo_cache (
+    k      TEXT PRIMARY KEY,
+    lat    DOUBLE PRECISION,
+    lon    DOUBLE PRECISION,
+    place  TEXT NOT NULL,
+    raw    TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

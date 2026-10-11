@@ -177,3 +177,31 @@ def test_extract_prompt_gets_image_bullet_only_when_mm(monkeypatch):
     finally:
         monkeypatch.setattr(config, "MM_ENABLED", False)
         importlib.reload(ex)
+
+
+def test_exif_line_and_timestamp(monkeypatch, imgdir, offline_cache):
+    # 带 EXIF 的 JPEG：拍摄时间 + GPS → 一行地点文字（反查打桩），消息没时间戳时用拍摄时间
+    from io import BytesIO
+    from PIL import Image
+    im = Image.new("RGB", (64, 48), (10, 20, 30))
+    ex = Image.Exif()
+    ex[306] = "2024:05:27 17:55:26"
+    gps = {1: "N", 2: (52.0, 12.0, 14.7), 3: "E", 4: (0.0, 7.0, 38.7)}
+    ex[0x8825] = gps
+    buf = BytesIO(); im.save(buf, format="JPEG", exif=ex.tobytes()); data = buf.getvalue()
+    when, lat, lon = mm.exif_info(data)
+    assert when == "2024-05-27 17:55" and abs(lat - 52.2041) < 0.001 and abs(lon - 0.1274) < 0.001
+    assert mm.exif_ts_ms(data) == 1716832500000
+    assert mm.exif_info(PNG) == (None, None, None) and mm.exif_ts_ms(b"junk") is None
+
+    async def fake_geo(la, lo):
+        return "Market Street, Cambridge, England, United Kingdom"
+    monkeypatch.setattr(mm, "reverse_geocode", fake_geo)
+
+    async def fake_call(body, kind="extract", attempts=None):
+        return "A street with shops. Text in image: none", "ok", 1, 1, {}
+    import app.extract as exm
+    monkeypatch.setattr(exm, "_call", fake_call)
+    ref = mm.ImageRef(hashlib.sha256(data).hexdigest(), "image/jpeg", data)
+    out = _run(mm.resolve_text(ref.tag, [ref], scope="u"))
+    assert out == f"{ref.tag} Photo taken 2024-05-27 17:55 at Market Street, Cambridge, England, United Kingdom (52.2041, 0.1274). A street with shops. Text in image: none"

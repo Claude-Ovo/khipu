@@ -23,6 +23,11 @@ UID = f"{TAG}:user"
 SID = f"{TAG}:life"
 
 
+def set_tag(tag: str) -> None:
+    global TAG, UID, SID
+    TAG, UID, SID = tag, f"{tag}:user", f"{tag}:life"
+
+
 def load(data: Path):
     qs = json.load(open(data / "atm-bench" / "atm-bench.json", encoding="utf-8"))
     emails = {e["id"]: e for e in json.load(open(data / "raw_memory" / "email" / "emails.json", encoding="utf-8"))}
@@ -162,7 +167,9 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--img-top", type=int, default=10)
     ap.add_argument("--out", default="atm-search.jsonl")
+    ap.add_argument("--tag", default="atm")
     a = ap.parse_args()
+    set_tag(a.tag)
     ingest(a) if a.cmd == "ingest" else search(a)
 
 
