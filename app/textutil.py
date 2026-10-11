@@ -25,9 +25,21 @@ def count_tokens(text: str) -> int:
     return int(cjk * 1.5 + (len(text) - cjk) / 4) + 1
 
 
+_CJK_RUN = re.compile(r"[一-鿿぀-ヿ가-힣]+")
+
+
 def tokenize(text: str) -> list[str]:
-    """BM25 分词：小写字母数字撇号，长度大于 1，不做停用词（twig 的做法，实测够用）。"""
-    return [w for w in _WORD.findall(text.lower()) if len(w) > 1]
+    """BM25 分词：小写字母数字撇号，长度大于 1，不做停用词（twig 的做法，实测够用）。
+    中日韩文字按连续段切成双字（相邻两字一个词，单独一个字的段才留单字）：第一枪的库里 12% 的消息含中文（1,518 个用户里
+    133 个整用户全是中文），以前这些文字在 BM25、字面、实体三路里完全不存在，只剩向量和重排在干活（10-11，做法借自
+    FlowGrid AML Retriever 的 FTS5 中文单双字索引，这里不取单字，单字太像停用词）。纯拉丁文本的分词结果与之前逐字相同。"""
+    words = [w for w in _WORD.findall(text.lower()) if len(w) > 1]
+    for run in _CJK_RUN.findall(text):
+        if len(run) == 1:
+            words.append(run)
+        else:
+            words.extend(run[i:i + 2] for i in range(len(run) - 1))
+    return words
 
 
 def split_sentences(text: str) -> list[str]:
