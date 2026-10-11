@@ -112,6 +112,8 @@ def search(a) -> None:
                         if s:
                             img_of_round[iid] = s
             for q in conv["human-annotated QAs"]:
+                if a.only_qimg and not q.get("question_image"):
+                    continue
                 query: object = q["question"]
                 if q.get("question_image"):   # 题目带图（VS/VR 类）：按合同用 ContentPart[] 发
                     u = image_uri(data, scene, q["question_image"])
@@ -165,6 +167,7 @@ def main() -> None:
     ap.add_argument("--convs", type=int, default=3)
     ap.add_argument("--out", default="mmg-search.jsonl")
     ap.add_argument("--img-top", type=int, default=10)
+    ap.add_argument("--only-qimg", action="store_true", help="只跑题目带图的题（VS/VR）")
     a = ap.parse_args()
     ingest(a) if a.cmd == "ingest" else search(a)
 
