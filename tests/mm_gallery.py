@@ -112,7 +112,12 @@ def search(a) -> None:
                         if s:
                             img_of_round[iid] = s
             for q in conv["human-annotated QAs"]:
-                r = client.post("/search", json={"query": q["question"], "user_id": uid, "top_k": 100})
+                query: object = q["question"]
+                if q.get("question_image"):   # 题目带图（VS/VR 类）：按合同用 ContentPart[] 发
+                    u = image_uri(data, scene, q["question_image"])
+                    if u:
+                        query = [{"type": "text", "text": q["question"]}, {"type": "image_url", "image_url": {"url": u}}]
+                r = client.post("/search", json={"query": query, "user_id": uid, "top_k": 100})
                 r.raise_for_status()
                 items = r.json()["data"]
                 ids = [it["id"] for it in items]
@@ -133,7 +138,7 @@ def search(a) -> None:
                 hit100 += rk is not None
                 by_point.setdefault(q["point"], []).append(1 if rk is not None and rk < 10 else 0)
                 row = {"scene": scene, "point": q["point"], "question": q["question"], "answer": q["answer"], "clue": q.get("clue"),
-                       "rank": rk, "returned": len(ids)}
+                       "rank": rk, "returned": len(ids), "question_image": bool(q.get("question_image"))}
                 ans = q["answer"]
                 if isinstance(ans, str) and _IMG_ID.match(ans.strip()):
                     img_q += 1
