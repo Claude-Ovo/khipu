@@ -1,0 +1,19 @@
+[Unit]
+Description=khipu mm (AML multimodal track, branch mm, database aml_mm)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/srv/aml/app3
+# 先读线上那份（key、token、模型名），再用 .env3 覆盖库名和多模态的运行值；中转 key 最后
+EnvironmentFile=/srv/aml/.env
+EnvironmentFile=/srv/aml/.env3
+EnvironmentFile=-/srv/aml/.extract
+ExecStart=/srv/aml/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8084 --workers 1 --timeout-keep-alive 75
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

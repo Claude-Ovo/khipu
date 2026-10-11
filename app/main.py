@@ -30,6 +30,7 @@ from .embed import embed_texts
 from .extract import NOTE_ROLES, ExtractUnavailable, extract_request
 from .httpclient import aclose as close_http, usage
 from .index import invalidate
+from . import mm
 from .search import search as run_search
 from . import watchdog
 
@@ -188,6 +189,7 @@ class Message(BaseModel):
     role: str
     content: str
     timestamp: int | float | None = None
+    images: list[Any] = Field(default_factory=list, exclude=True)   # 多模态：请求里的图片（mm.ImageRef），不进 model_dump / 不落库
 
     @model_validator(mode="before")
     @classmethod
@@ -201,7 +203,12 @@ class Message(BaseModel):
             if r not in ("user", "assistant"):
                 r = _ROLE_ALIASES.get(r, "user")
         d["role"] = r
-        d["content"] = _content_to_text(d.get("content"))
+        d["images"] = []
+        split = mm.split_parts(d.get("content")) if config.MM_ENABLED else None
+        if split is not None:   # 多模态实例：图片留 [image <sha12>] 占位，_prepare_add 里接上描述
+            d["content"], d["images"] = _clean_text(split[0]), split[1]
+        else:
+            d["content"] = _content_to_text(d.get("content"))
         if "timestamp" in d:
             d["timestamp"] = _clean_timestamp(d.get("timestamp"))
         return d
@@ -248,6 +255,7 @@ class SearchRequest(BaseModel):
     user_id: str = Field(min_length=1)
     top_k: int | None = None  # 合同必填；缺了、解析不了或不是正数，都按上限处理
     options: list[str] | None = None
+    query_images: list[Any] = Field(default_factory=list, exclude=True)   # 多模态：题目里的图片（mm.ImageRef）
 
     @model_validator(mode="before")
     @classmethod
@@ -256,7 +264,11 @@ class SearchRequest(BaseModel):
             return data
         d = dict(data)
         q = d.get("query")
-        if q is None:
+        d["query_images"] = []
+        split = mm.split_parts(q) if config.MM_ENABLED else None
+        if split is not None:
+            d["query"], d["query_images"] = _clean_text(split[0]), split[1]
+        elif q is None:
             d["query"] = ""
         elif not isinstance(q, str):
             d["query"] = _json_text(q) if isinstance(q, (dict, list)) else str(q)
@@ -490,6 +502,7 @@ def _effective_config() -> dict[str, Any]:
         "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
         "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
+        "mm": config.MM_ENABLED, "mm_return_images": config.MM_RETURN_IMAGES, "mm_detail": config.MM_DETAIL,
     }
 
 
@@ -503,6 +516,15 @@ async def _prepare_add(req: AddRequest) -> tuple[list, dict[str, list[float]]]:
     """Add 的两个外部阶段：B3 抽取、向量。都只看请求本身不看库，所以能在事务前算好；任一阶段拿不到就 503，不写半截数据。"""
     # B3：先抽取（调不通回 503，和向量同一套语义：不写半截数据）。抽取只看请求本身，不看库
     notes = []
+    if config.MM_ENABLED and any(m.images for m in req.messages):
+        # 多模态：先把图片存盘、写成描述接到占位符后面；之后抽取和向量看到的就是纯文本。描述调不通和抽取一样回 503
+        try:
+            for m in req.messages:
+                if m.images:
+                    m.content = await mm.resolve_text(m.content, m.images, scope=req.user_id)
+        except ExtractUnavailable as e:
+            log.warning("add %s: image caption unavailable: %s", req.request_id, e)
+            raise HTTPException(status_code=503, detail="image captioning temporarily unavailable, retry later") from e
     if config.EXTRACT_ENABLED and req.messages:
         try:
             notes = await extract_request([m.model_dump() for m in req.messages], scope=req.user_id)
@@ -552,9 +574,19 @@ async def add(req: AddRequest) -> dict[str, Any]:
 
 @app.post("/search", dependencies=[Depends(require_auth)])
 async def search(req: SearchRequest) -> dict[str, Any]:
-    if req.query == "" and not req.options:
+    if req.query == "" and not req.options and not req.query_images:
         return {"data": []}
     t0 = time.monotonic()
-    data = await run_search(req.user_id, req.query, req.options, req.top_k or config.HARD_TOP_K)
+    query = req.query
+    if config.MM_ENABLED and req.query_images:
+        # 题图也转成文字拼进查询（缓存按 user_id 隔离，和 Add 的图一样留档）。调不通回 503，平台会重试
+        try:
+            query = await mm.resolve_text(query, req.query_images, scope=req.user_id)
+        except ExtractUnavailable as e:
+            log.warning("search user=%s: query image caption unavailable: %s", req.user_id[:60], e)
+            raise HTTPException(status_code=503, detail="image captioning temporarily unavailable, retry later") from e
+    data = await run_search(req.user_id, query, req.options, req.top_k or config.HARD_TOP_K)
+    if config.MM_ENABLED:
+        data = mm.attach_images(data)   # 多模态赛道的 data[].content 是 ContentPart[]：文本 + 命中的原图
     log.info("search user=%s k=%s returned=%d %dms", req.user_id[:60], req.top_k, len(data), int((time.monotonic() - t0) * 1000))
     return {"data": data}

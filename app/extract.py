@@ -53,6 +53,14 @@ summary: one to three sentences on what this chunk covers: who talked about what
 
 Write in the language of the conversation. Output only the JSON object."""
 
+MM_BULLET = '- A span starting with "[image <id>]" describes a photo shared at that point in the conversation; treat the description as what the photo shows and record its facts (people, pets, objects, food, places, text in the image) like any other fact, keeping the "[image <id>]" tag at the end of each fact taken from that photo.'
+
+if config.MM_ENABLED:
+    # 多模态实例：原文里 [image <id>] 开头的那一段是 gpt-4o-mini 写的照片描述（见 mm.py）。文本实例的提示词一字不变
+    SYSTEM_PROMPT = SYSTEM_PROMPT.replace("- One fact per item; do not merge unrelated facts.",
+                                          MM_BULLET + "\n- One fact per item; do not merge unrelated facts.")
+    PROMPT_VERSION = PROMPT_VERSION + "+mm1"
+
 NOTE_ROLES = ("note", "summary")
 _GENERIC_SUBJECTS = {"", "user", "the user", "assistant", "the assistant", "i", "me", "you", "speaker", "unknown",
                      "none", "null", "n/a"}
