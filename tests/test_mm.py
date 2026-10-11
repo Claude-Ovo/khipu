@@ -173,7 +173,7 @@ def test_extract_prompt_gets_image_bullet_only_when_mm(monkeypatch):
     monkeypatch.setattr(config, "MM_ENABLED", True)
     ex2 = importlib.reload(ex)
     try:
-        assert "[image <id>]" in ex2.SYSTEM_PROMPT and ex2.PROMPT_VERSION.endswith("+mm1")
+        assert "[image <id>]" in ex2.SYSTEM_PROMPT and "Photo taken <time> at <address>" in ex2.SYSTEM_PROMPT and ex2.PROMPT_VERSION.endswith("+mm2")
     finally:
         monkeypatch.setattr(config, "MM_ENABLED", False)
         importlib.reload(ex)
