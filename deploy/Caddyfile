@@ -6,6 +6,7 @@
 # 两套实例并存（2026-09-30 起）：
 #   /add /search /health        → :8080  第一次 Full 用的 v0.3.1 和它的库，原样留着给主办方复现
 #   /v2/add /v2/search /v2/health → :8082  第二枪的代码，独立的库 aml2；官网「新增版本」绑到 /v2/*
+#   /mm/add /mm/search /mm/health → :8084  多模态赛道（分支 mm），独立的库 aml_mm
 (upstream) {
 	# 服务重启那几秒 Caddy 先等着重试，不直接给平台回 502
 	lb_try_duration 60s
@@ -30,6 +31,12 @@
 			import upstream
 		}
 	}
+	# 多模态赛道实例（2026-10-11）：/mm/add /mm/search /mm/health → :8084，独立库 aml_mm；代码在分支 mm，部署脚本 deploy/deploy-mm.sh
+	handle_path /mm/* {
+		reverse_proxy 127.0.0.1:8084 {
+			import upstream
+		}
+	}
 	handle {
 		reverse_proxy 127.0.0.1:8080 {
 			import upstream
@@ -41,6 +48,12 @@ aml.akeovo.com {
 	encode gzip
 	handle_path /v2/* {
 		reverse_proxy 127.0.0.1:8082 {
+			import upstream
+		}
+	}
+	# 多模态赛道实例（2026-10-11）：/mm/add /mm/search /mm/health → :8084，独立库 aml_mm；代码在分支 mm，部署脚本 deploy/deploy-mm.sh
+	handle_path /mm/* {
+		reverse_proxy 127.0.0.1:8084 {
 			import upstream
 		}
 	}
