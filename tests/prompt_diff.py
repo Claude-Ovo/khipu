@@ -1,4 +1,4 @@
-"""提示词 x1 → x2 的逐窗对照（10-10，主办方回信后加了两句约束）。
+"""提示词逐窗对照（10-10 起；默认拿当前 SYSTEM_PROMPT 对 x1 的存量输出，--new-prompt 可换）。
 
 从一个已经用 x1 抽过的库（aml_b3）里按 request 重建原文窗，用 x1 的键去缓存里取旧输出，再用当前提示词（x2）
 重抽同一窗，逐窗 diff 事实行。只取缓存命中的窗（命中就证明窗重建得一字不差）。新抽的结果以 scope=promptdiff:<user>
@@ -31,10 +31,13 @@ def old_sha(window: str, old_prompt: str, old_version: str) -> str:
     return hashlib.sha256((old_version + "\n" + json.dumps(body, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()
 
 
-def load_requests(n: int, seed: int) -> list[tuple[str, str, list[dict]]]:
-    with db.pool.connection() as conn:
-        pairs = conn.execute("SELECT user_id, request_id FROM segments WHERE kind = 'msg' GROUP BY 1, 2").fetchall()
-    random.Random(seed).shuffle(pairs)
+def load_requests(n: int, seed: int, manifest: str | None = None) -> list[tuple[str, str, list[dict]]]:
+    if manifest:   # 固定样本：复审 #11 要求同一批窗口可复现（SQL 不带 ORDER BY 时 shuffle seed 不保证同批）
+        pairs = [(json.loads(l)["user_id"], json.loads(l)["request_id"]) for l in open(manifest, encoding="utf-8") if l.strip()]
+    else:
+        with db.pool.connection() as conn:
+            pairs = conn.execute("SELECT user_id, request_id FROM segments WHERE kind = 'msg' GROUP BY 1, 2 ORDER BY 1, 2").fetchall()
+        random.Random(seed).shuffle(pairs)
     out = []
     with db.pool.connection() as conn:
         for user_id, request_id in pairs:
@@ -64,7 +67,8 @@ async def main() -> None:
     ap.add_argument("--old-version", default="x1")
     ap.add_argument("--new-prompt", default=None, help="用这个提示词重抽（默认当前 SYSTEM_PROMPT）；传 x1 自己就能量同提示词的复跑噪声")
     ap.add_argument("--new-version", default=None)
-    ap.add_argument("--scope-prefix", default="promptdiff")
+    ap.add_argument("--scope-prefix", required=True, help="每轮用新前缀，否则命中上一轮的缓存不是重抽（复审 #11-E3）")
+    ap.add_argument("--manifest", default=None, help="jsonl，每行 {user_id, request_id}，固定样本；collab/prompt-diff/manifest-80.jsonl")
     ap.add_argument("--requests", type=int, default=60)
     ap.add_argument("--max-windows", type=int, default=120)
     ap.add_argument("--seed", type=int, default=7)
@@ -77,7 +81,7 @@ async def main() -> None:
         extract.PROMPT_VERSION = a.new_version
     db.pool.open()
     db.init_schema()   # aml_b3 还没有 r3/r4 加的列
-    reqs = load_requests(a.requests, a.seed)
+    reqs = load_requests(a.requests, a.seed, a.manifest)
     print(f"requests sampled: {len(reqs)}")
     done = miss = 0
     same = changed = 0
@@ -101,7 +105,8 @@ async def main() -> None:
                 else:
                     same += 1
                 added_total += len(added); removed_total += len(removed)
-                f.write(json.dumps({"user_id": user_id, "request_id": request_id, "n_old": len(of), "n_new": len(nf),
+                f.write(json.dumps({"user_id": user_id, "request_id": request_id, "window_sha": hashlib.sha256(w.encode()).hexdigest()[:16],
+                                    "n_old": len(of), "n_new": len(nf), "old_facts": of, "new_facts": nf,
                                     "added": added, "removed": removed, "old_summary": summary(cached), "new_summary": summary(new)},
                                    ensure_ascii=False) + "\n")
     u = extract.usage.snapshot()["extract"]

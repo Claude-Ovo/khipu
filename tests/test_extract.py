@@ -673,8 +673,11 @@ def test_cache_row_keeps_input_window_and_cleans_metadata(monkeypatch, _offline)
     assert out["system_fingerprint"] is None and out["created"] is None
 
 
-def test_prompt_keeps_uncertainty_and_no_invented_dates():
-    # 主办方 10-10：定不下来的日期和事件状态要保留不确定性。这里只能核提示词写了这条要求，模型照不照做要看线上样本
+def test_prompt_keeps_date_fallback_and_plans_as_plans():
+    # 主办方 10-10：日期归一化要有明确参照，定不下来的日期和事件状态要保留不确定性。复审 #11-E1：要护住的是换算不了就保留原话的
+    # fallback、计划不写成已发生、以及版本号；字符串断言只证明提示词写了，模型照不照做看 collab/prompt-diff 的对照
     p = extract.SYSTEM_PROMPT
-    assert "header is the time reference" in p and "stay plans" in p
+    assert 'keep the original words and add "(said on 20 May 2023)"' in p
+    assert "When the message has a date and the event's time is given or implied" in p
+    assert 'stay plans ("plans to", "may"), not done' in p
     assert extract.PROMPT_VERSION == "x4"
