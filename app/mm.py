@@ -303,7 +303,7 @@ _geo_last = 0.0
 
 
 def _geo_key(lat: float, lon: float) -> str:
-    return f"{lat:.3f},{lon:.3f}"   # 约 100 m 一格；同一地点连拍共用一次查询
+    return f"{lat:.4f},{lon:.4f}"   # 约 10 m 一格；同一地点连拍共用一次查询（审查 #12-4：100 m 格子会让隔壁两家店共用一个门牌）
 
 
 def _geo_get(key: str) -> str | None:
@@ -387,9 +387,25 @@ async def resolve_text(text: str, images: list[ImageRef], scope: str) -> str:
 
 # ---------- 返回：命中的原图当证据 ----------
 
-def attach_images(items: list[dict]) -> list[dict]:
+def _owned_shas(user_id: str, sha12s: list[str]) -> set[str]:
+    """这些短标签里，哪些图确实以这个 user_id 进过描述缓存。正文里的标签不当凭证（审查 #12-3：谁的正文里写了一串别人的
+    哈希，就能把别人的图带出来）；图片目录是全局按 sha 存的，归属只认 image_cache 的 user_id。"""
+    if not sha12s:
+        return set()
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT DISTINCT left(image_sha, 12) FROM image_cache WHERE user_id = %s AND left(image_sha, 12) = ANY(%s)",
+                            (user_id, sha12s)).fetchall()
+    return {r[0] for r in rows}
+
+
+def attach_images(items: list[dict], user_id: str) -> list[dict]:
     """data[].content 改成有序 ContentPart[]：先是现在的文本（日期头 + 正文，含描述），再把正文里标了 [image <sha12>] 的原图
-    按出现顺序带回去，整个响应最多 MM_RETURN_IMAGES 张、MM_RETURN_BYTES 字节；一张图只带一次。text 字段仍是字符串。"""
+    按出现顺序带回去，整个响应最多 MM_RETURN_IMAGES 张、MM_RETURN_BYTES 字节；一张图只带一次。text 字段仍是字符串。
+    只带该 user_id 名下描述过的图；标签对不上归属的原样留在正文里、不附图。"""
+    wanted = sorted({sha12 for it in items if isinstance(it.get("content"), str) for sha12 in MARK.findall(it["content"])})
+    owned = _owned_shas(user_id, wanted)
+    if len(owned) < len(wanted):
+        log.warning("attach_images user=%s: %d tag(s) not owned, skipped", user_id[:60], len(wanted) - len(owned))
     n = 0
     used = 0
     seen: set[str] = set()
@@ -399,7 +415,7 @@ def attach_images(items: list[dict]) -> list[dict]:
             continue
         parts: list[dict] = [{"type": "text", "text": content}]
         for sha12 in MARK.findall(content):
-            if sha12 in seen or n >= config.MM_RETURN_IMAGES:
+            if sha12 in seen or n >= config.MM_RETURN_IMAGES or sha12 not in owned:
                 continue
             p = _find_image(sha12)
             if p is None:

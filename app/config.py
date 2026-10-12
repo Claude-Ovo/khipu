@@ -78,6 +78,7 @@ EXTRACT_MARK_LATEST = os.environ.get("EXTRACT_MARK_LATEST", "") == "1"
 NOTES_IN_SEARCH = os.environ.get("NOTES_IN_SEARCH", "1") != "0"
 # >0：返回的 top_k 条里笔记最多占这么多条，超出的笔记跳过、让给原文（10-06 对照：不限时 100 条里约 40 条是笔记，原文证据覆盖掉了几个点）
 NOTES_MAX_RETURNED = _int("NOTES_MAX_RETURNED", 0)
+NOTES_MAX_CANDIDATES = _int("NOTES_MAX_CANDIDATES", 0)   # 重排窗口里笔记最多占几席（0=不限，和以前一样）；审查 #12-2 的对照臂
 # 时间线清单（10-07）：问「一共几次 / 有哪些 / 怎么变的 / 总结」这类题时，把重排窗口里的笔记合并近重复、按日期从早到晚排成一条，
 # 作为第一条返回。不调模型、不下结论，只是把散在 100 条里的同类事实摆成一张表。默认关
 LEDGER_ENABLED = os.environ.get("LEDGER_ENABLED", "") == "1"

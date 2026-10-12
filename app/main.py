@@ -499,6 +499,7 @@ def _effective_config() -> dict[str, Any]:
         "extract_key_set": bool(config.EXTRACT_API_KEY), "extract_token_cap": config.EXTRACT_TOKEN_CAP,
         "extract_request_timeout_s": config.EXTRACT_REQUEST_TIMEOUT_S,
         "notes_in_search": config.NOTES_IN_SEARCH, "notes_max_returned": config.NOTES_MAX_RETURNED,
+        "notes_max_candidates": config.NOTES_MAX_CANDIDATES,
         "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
         "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
@@ -589,6 +590,6 @@ async def search(req: SearchRequest) -> dict[str, Any]:
             raise HTTPException(status_code=503, detail="image captioning temporarily unavailable, retry later") from e
     data = await run_search(req.user_id, query, req.options, req.top_k or config.HARD_TOP_K)
     if config.MM_ENABLED:
-        data = mm.attach_images(data)   # 多模态赛道的 data[].content 是 ContentPart[]：文本 + 命中的原图
+        data = mm.attach_images(data, req.user_id)   # 多模态赛道的 data[].content 是 ContentPart[]：文本 + 命中的原图
     log.info("search user=%s k=%s returned=%d %dms", req.user_id[:60], req.top_k, len(data), int((time.monotonic() - t0) * 1000))
     return {"data": data}
