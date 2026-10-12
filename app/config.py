@@ -146,7 +146,7 @@ MM_CAPTION_MAX_TOKENS = _int("MM_CAPTION_MAX_TOKENS", 400)
 MM_SEND_MAX_PX = _int("MM_SEND_MAX_PX", 1024)                      # 送模型和当证据返回的缩小版：最长边像素（原图照存）
 MM_RETURN_IMAGES = _int("MM_RETURN_IMAGES", 5)                      # 一次 Search 最多带回几张原图
 MM_RETURN_BYTES = _int("MM_RETURN_BYTES", 6 * 1024 * 1024)          # 带回的原图合计字节上限
-# EXIF 里的 GPS 反查地址（ATM-Bench 的照片全带 GPS，题目一半在问「那家店在哪」）：OpenStreetMap Nominatim，查表不是模型，每秒 1 次、按 100 m 网格缓存
+# EXIF 里的 GPS 反查地址（ATM-Bench 的照片全带 GPS，题目一半在问「那家店在哪」）：OpenStreetMap Nominatim，查表不是模型，每秒 1 次、按约 10 m 网格缓存
 MM_GEOCODE = os.environ.get("MM_GEOCODE", "1") != "0"
 MM_GEOCODE_URL = os.environ.get("MM_GEOCODE_URL", "https://nominatim.openstreetmap.org/reverse")
 MM_GEOCODE_UA = os.environ.get("MM_GEOCODE_UA", "khipu-aml/1.0 (Agent Memory Challenge entry; 310210171+Claude-Ovo@users.noreply.github.com)")
