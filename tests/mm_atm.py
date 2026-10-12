@@ -57,6 +57,29 @@ def ts_image(stem: str) -> int | None:
         return None
 
 
+def thumb(data: bytes) -> list[int]:
+    """16x16 灰度缩略图：返回的是 1024 px 的 JPEG 副本，字节哈希对不上原图，只能按像素认（审查 #12-5）。"""
+    import io
+    from PIL import Image
+    return list(Image.open(io.BytesIO(data)).convert("L").resize((16, 16)).getdata())
+
+
+def same(a: list[int], b: list[int]) -> bool:
+    return sum(abs(x - y) for x, y in zip(a, b)) / len(a) < 12
+
+
+def attached_images(items: list[dict]) -> list[bytes]:
+    """响应里真正附上的图片（按出现顺序），不是正文里的标签。"""
+    out = []
+    for it in items:
+        c = it["content"]
+        if isinstance(c, list):
+            for part in c:
+                if part.get("type") == "image_url":
+                    out.append(base64.b64decode(part["image_url"]["url"].split(",", 1)[1]))
+    return out
+
+
 def corpus(a) -> tuple[list[dict], list[dict]]:
     """返回 (题, 时间序消息)。"""
     data = Path(a.data)
@@ -120,7 +143,8 @@ def search(a) -> None:
     client = httpx.Client(base_url=a.base, headers={"Authorization": f"Bearer {a.token}"} if a.token else {}, timeout=300)
     tot = hit10 = hit100 = allhit10 = 0
     by = {"image": [0, 0], "email": [0, 0]}
-    img_evidence = img_returned = 0
+    img_evidence = img_returned = img_attached = 0
+    n_attached: list[int] = []
     with open(a.out, "w", encoding="utf-8") as f:
         for q in chosen:
             r = client.post("/search", json={"query": q["question"], "user_id": UID, "top_k": 100})
@@ -143,15 +167,29 @@ def search(a) -> None:
             allhit10 += all(x is not None and x < 10 for x in ranks)
             by[kind][0] += first is not None and first < 10
             by[kind][1] += 1
+            attached_rank = None
             if kind == "image":
                 img_evidence += 1
                 tags = [m for it in items for m in re.findall(r"\[image ([0-9a-f]{12})\]", json.dumps(it["content"]))]
                 img_returned += any(sha12.get(e) in tags[:a.img_top] for e in q["evidence_ids"] if not e.startswith("email"))
+                # 真附上的图：逐张解码，和证据原图的缩略图比像素
+                ev = [thumb(images[e].read_bytes()) for e in q["evidence_ids"] if e in images]
+                got = attached_images(items)
+                n_attached.append(len(got))
+                for i, data in enumerate(got):
+                    t = thumb(data)
+                    if any(same(t, x) for x in ev):
+                        attached_rank = i
+                        break
+                img_attached += attached_rank is not None
             f.write(json.dumps({"id": q["id"], "qtype": q["qtype"], "kind": kind, "question": q["question"], "answer": q["answer"],
-                                "evidence": q["evidence_ids"], "ranks": ranks, "returned": len(items)}, ensure_ascii=False) + "\n")
+                                "evidence": q["evidence_ids"], "ranks": ranks, "returned": len(items),
+                                "attached_rank": attached_rank}, ensure_ascii=False) + "\n")
     print(f"questions {tot}: first evidence in top10 {hit10} ({100 * hit10 / tot:.0f}%), in top100 {hit100} ({100 * hit100 / tot:.0f}%), all evidence in top10 {allhit10}")
     print("by kind (top10):", {k: f"{v[0]}/{v[1]}" for k, v in by.items()})
-    print(f"image-evidence questions {img_evidence}: an evidence image among first {a.img_top} returned image tags {img_returned}")
+    print(f"image-evidence questions {img_evidence}: an evidence image among first {a.img_top} returned image tags {img_returned} "
+          f"(tag count, old metric); an evidence image actually attached in the response {img_attached} "
+          f"(images attached per response: avg {sum(n_attached) / max(1, len(n_attached)):.1f}, max {max(n_attached, default=0)})")
 
 
 def main() -> None:

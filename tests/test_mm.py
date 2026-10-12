@@ -107,11 +107,12 @@ def test_attach_images_returns_original_images_in_order_with_caps(monkeypatch, i
     a = mm.ImageRef(hashlib.sha256(PNG).hexdigest(), "image/png", PNG)
     b = mm.ImageRef(hashlib.sha256(JPG).hexdigest(), "image/jpeg", JPG)
     mm.store_image(a); mm.store_image(b)
+    monkeypatch.setattr(mm, "_owned_shas", lambda user_id, shas: set(shas) if user_id == "u1" else set())
     items = [{"id": "1", "content": f"[2023-05-20 (Sat)] user: {a.tag} a dog {b.tag} a cat", "text": "x", "score": 0.9},
              {"id": "2", "content": f"[2023-05-21 (Sun)] user: {a.tag} again", "text": "y", "score": 0.8},
              {"id": "3", "content": "[2023-05-22 (Mon)] user: no image here", "text": "z", "score": 0.7}]
     monkeypatch.setattr(config, "MM_RETURN_IMAGES", 5)
-    out = mm.attach_images(json.loads(json.dumps(items)))
+    out = mm.attach_images(json.loads(json.dumps(items)), "u1")
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url", "image_url"]
     assert out[0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")   # 缩小版一律 JPEG
     assert out[0]["content"][2]["image_url"]["url"] == JPG_URI                                # 假 JPEG 缩不了：原样
@@ -119,12 +120,26 @@ def test_attach_images_returns_original_images_in_order_with_caps(monkeypatch, i
     assert out[2]["content"] == [{"type": "text", "text": items[2]["content"]}]
     assert out[0]["text"] == "x"                                        # text 仍是字符串
     monkeypatch.setattr(config, "MM_RETURN_IMAGES", 1)
-    out = mm.attach_images(json.loads(json.dumps(items)))
+    out = mm.attach_images(json.loads(json.dumps(items)), "u1")
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url"]
     monkeypatch.setattr(config, "MM_RETURN_IMAGES", 5)
     monkeypatch.setattr(config, "MM_RETURN_BYTES", len(mm.small_path(a.sha).read_bytes()))
-    out = mm.attach_images(json.loads(json.dumps(items)))
+    out = mm.attach_images(json.loads(json.dumps(items)), "u1")
     assert [p["type"] for p in out[0]["content"]] == ["text", "image_url"]   # 字节上限
+
+
+def test_attach_images_only_for_tags_owned_by_the_user(monkeypatch, imgdir):
+    """审查 #12-3：正文里的 [image <sha12>] 不是凭证。别的用户的图、凭空写出来的标签，都不附图，正文原样返回。"""
+    a = mm.ImageRef(hashlib.sha256(PNG).hexdigest(), "image/png", PNG)
+    mm.store_image(a)
+    owned = {"u1": {a.sha[:12]}}
+    monkeypatch.setattr(mm, "_owned_shas", lambda user_id, shas: {x for x in shas if x in owned.get(user_id, set())})
+    items = [{"id": "1", "content": f"[2023-05-20 (Sat)] user: {a.tag} a dog [image 0123456789ab] forged", "text": "x", "score": 0.9}]
+    out = mm.attach_images(json.loads(json.dumps(items)), "u1")
+    assert [p["type"] for p in out[0]["content"]] == ["text", "image_url"]
+    assert out[0]["content"][0]["text"] == items[0]["content"]
+    out = mm.attach_images(json.loads(json.dumps(items)), "u2")
+    assert out[0]["content"] == [{"type": "text", "text": items[0]["content"]}]
 
 
 def test_shrink_caps_long_side_and_keeps_original(imgdir, monkeypatch):
