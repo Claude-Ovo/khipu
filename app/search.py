@@ -335,17 +335,43 @@ def _insert_rules(idx: UserIndex, order: list[int]) -> list[int]:
 
 # ---------- 装箱 ----------
 
+def _rerank_head(idx: UserIndex, order: list[int]) -> tuple[list[int], list[int]]:
+    """重排窗口 = 融合顺序的前 RERANK_TOPN 条。NOTES_MAX_CANDIDATES>0 时笔记在窗口里最多占这么多席，超额的笔记让位给
+    后面的原文（审查 #12-2：笔记在重排前就把原文挤出窗口，装箱时再限笔记条数救不回那些原文）；让出去的笔记排到窗口
+    之后，相对顺序不变。关着（默认）时和以前逐字一样。"""
+    cap = config.NOTES_MAX_CANDIDATES
+    if cap <= 0:
+        return order[: config.RERANK_TOPN], order
+    head: list[int] = []
+    rest: list[int] = []
+    notes = 0
+    for p in order:
+        is_note = idx.rows[p].kind != "msg"
+        if len(head) < config.RERANK_TOPN and (not is_note or notes < cap):
+            head.append(p)
+            notes += is_note
+        else:
+            rest.append(p)
+    return head, head + rest
+
+
 async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, float],
                     must: list[int] | None = None, trace: dict | None = None) -> list[int]:
     """对融合后的前 RERANK_TOPN 条过一遍交叉编码器，按重排分（可与 RRF 名次混合）重排；后面的原样接上。
     重排不可用时原样返回——它只改顺序，不改准入，谁能进门仍由五路通道决定。
     must：必须进重排窗口的候选（审查 #4：第二跳捞到的新证据会被双命中前置挤到窗口外，永远没机会被重排）。"""
-    head = order[: config.RERANK_TOPN]
+    head, order = _rerank_head(idx, order)
     if must:
-        hs = set(head)
-        extra = [p for p in must if p not in hs]
+        # Codex #12-1：给 extra 腾位置时只裁非 must 的尾巴，已经在窗口里的 must 不能被裁出去（旧代码从尾部裁，
+        # 配额开着时 must 可能正好在尾部）。#12-2：must 里的笔记不受 NOTES_MAX_CANDIDATES 限制，这是明确的例外——
+        # 第二跳捞到的证据必须有重排分，不管它是原文还是笔记。线上 HOP_ENABLED=0，must 为空，这段不走
+        ms = set(must)
+        extra = [p for p in must if p not in set(head)]
         if extra:
-            head = head[: max(2, config.RERANK_TOPN - len(extra))] + extra
+            others = [p for p in head if p not in ms]
+            room = max(2, config.RERANK_TOPN - len(extra)) - (len(head) - len(others))
+            drop = set(others[max(0, room):])
+            head = [p for p in head if p not in drop] + extra
             hs = set(head)
             order = head + [p for p in order if p not in hs]
     if len(head) < 2:

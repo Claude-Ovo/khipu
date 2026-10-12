@@ -487,6 +487,7 @@ def _effective_config() -> dict[str, Any]:
         "extract_key_set": bool(config.EXTRACT_API_KEY), "extract_token_cap": config.EXTRACT_TOKEN_CAP,
         "extract_request_timeout_s": config.EXTRACT_REQUEST_TIMEOUT_S,
         "notes_in_search": config.NOTES_IN_SEARCH, "notes_max_returned": config.NOTES_MAX_RETURNED,
+        "notes_max_candidates": config.NOTES_MAX_CANDIDATES,
         "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
         "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,

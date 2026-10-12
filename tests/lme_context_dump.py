@@ -130,6 +130,8 @@ async def main() -> None:
     effective["db_session_timezone"] = db_timezone()
     effective["usage_counters"] = usage is not None
     effective["NOTES_IN_SEARCH"] = getattr(config, "NOTES_IN_SEARCH", None)
+    effective["NOTES_MAX_RETURNED"] = getattr(config, "NOTES_MAX_RETURNED", None)
+    effective["NOTES_MAX_CANDIDATES"] = getattr(config, "NOTES_MAX_CANDIDATES", None)
     effective["user_prefix"] = args.user_prefix
     print(f"code {commit[:7]} db={db_name} tz={effective['db_session_timezone']} rerank={config.RERANK_ENABLED} "
           f"fusion={effective['FUSION_RULE']} RERANK_TOPN={config.RERANK_TOPN} top_k={args.top_k}; "
