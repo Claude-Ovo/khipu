@@ -217,6 +217,20 @@ Combined, cap 20 vs raw over 220 questions: +33 / −23 discordant (sign test p 
 
 Cost of this round: AiHubMix $0.18; Bailian ≈ ¥17 (LME dumps ¥6.2, LME answers ¥2.9, LoCoMo dumps ¥4.8, LoCoMo answers ¥3.2).
 
+## Notes quota inside the rerank window (10-12)
+
+`NOTES_MAX_CANDIDATES` (commit `b3d5b1d`, default 0 = unchanged): notes may take at most this many of the `RERANK_TOPN` rerank slots; notes beyond the quota move behind the window in their original order and raw messages fill the freed slots. Motivation (outside review, 10-12): `NOTES_MAX_RETURNED` caps notes at boxing time, after notes have already pushed raw messages out of the rerank window, so the raw evidence lost there never gets a rerank score.
+
+LongMemEval-S, the same 100 questions and stored data as the comparisons above (`aml_b3`, `b3cmp:lme:`), Search side only, `NOTES_MAX_RETURNED`=20 in both arms:
+
+| arm | code | turn@10 | allturn@100 | notes returned | avg returned tokens | cost |
+|---|---|---|---|---|---|---|
+| cap 20 (10-06) | 7c16619 | 91 | 94 | 20.0 | 13,636 | ¥3.10 |
+| cap 20, r7 (10-11) | b7e5574 | 91 | 94 | 20.0 | 13,636 | ¥3.10 |
+| cap 20 + quota 40 | b3d5b1d | 91 | 96 | 20.0 | 12,885 | ¥3.38 |
+
+Per question against r7: 2 up, 0 down (both on allturn@100). The raw arm's 96 / 98 is not recovered; half of the all-evidence gap closes at no measured cost. Answers were not re-run: the 10-06 noise note (about 5 points per 100 under this proxy) means a +2 coverage change is not resolvable on the answer side. Adoption decided after Codex review #12.
+
 ## Two Search-side ideas that did not help (10-07)
 
 Both on the same stored data, compared per question with the `cap 20` arm; both stay off (`LEDGER_ENABLED`, `SPAN_ENABLED`).
