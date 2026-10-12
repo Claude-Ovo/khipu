@@ -362,10 +362,16 @@ async def _reranked(idx: UserIndex, q: str, order: list[int], scores: dict[int, 
     must：必须进重排窗口的候选（审查 #4：第二跳捞到的新证据会被双命中前置挤到窗口外，永远没机会被重排）。"""
     head, order = _rerank_head(idx, order)
     if must:
-        hs = set(head)
-        extra = [p for p in must if p not in hs]
+        # Codex #12-1：给 extra 腾位置时只裁非 must 的尾巴，已经在窗口里的 must 不能被裁出去（旧代码从尾部裁，
+        # 配额开着时 must 可能正好在尾部）。#12-2：must 里的笔记不受 NOTES_MAX_CANDIDATES 限制，这是明确的例外——
+        # 第二跳捞到的证据必须有重排分，不管它是原文还是笔记。线上 HOP_ENABLED=0，must 为空，这段不走
+        ms = set(must)
+        extra = [p for p in must if p not in set(head)]
         if extra:
-            head = head[: max(2, config.RERANK_TOPN - len(extra))] + extra
+            others = [p for p in head if p not in ms]
+            room = max(2, config.RERANK_TOPN - len(extra)) - (len(head) - len(others))
+            drop = set(others[max(0, room):])
+            head = [p for p in head if p not in drop] + extra
             hs = set(head)
             order = head + [p for p in order if p not in hs]
     if len(head) < 2:

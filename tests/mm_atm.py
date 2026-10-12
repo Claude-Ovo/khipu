@@ -57,15 +57,21 @@ def ts_image(stem: str) -> int | None:
         return None
 
 
-def thumb(data: bytes) -> list[int]:
-    """16x16 灰度缩略图：返回的是 1024 px 的 JPEG 副本，字节哈希对不上原图，只能按像素认（审查 #12-5）。"""
+def thumb(data: bytes) -> tuple[float, list[int]]:
+    """(长宽比, 32x32 灰度缩略图)：返回的是 1024 px 的 JPEG 副本，字节哈希对不上原图，只能按像素认（审查 #12-5）。
+    长宽比先卡住（Codex #12-7：纯色图缩完灰度一样），再比像素。仍是近似，不是身份证明。"""
     import io
     from PIL import Image
-    return list(Image.open(io.BytesIO(data)).convert("L").resize((16, 16)).getdata())
+    im = Image.open(io.BytesIO(data))
+    ratio = im.width / im.height
+    return ratio, list(im.convert("L").resize((32, 32)).getdata())
 
 
-def same(a: list[int], b: list[int]) -> bool:
-    return sum(abs(x - y) for x, y in zip(a, b)) / len(a) < 12
+def same(a: tuple[float, list[int]], b: tuple[float, list[int]]) -> bool:
+    if abs(a[0] - b[0]) / max(a[0], b[0]) > 0.02:
+        return False
+    px, py = a[1], b[1]
+    return sum(abs(x - y) for x, y in zip(px, py)) / len(px) < 10
 
 
 def attached_images(items: list[dict]) -> list[bytes]:

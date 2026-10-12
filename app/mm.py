@@ -171,18 +171,13 @@ def send_bytes(ref: ImageRef) -> tuple[str, bytes]:
     return (mime or ref.mime), data
 
 
-def _find_image(sha12: str) -> Path | None:
-    """返回证据用的那份：优先缩小版，没有就原图。"""
-    d = Path(config.MM_IMAGE_DIR) / sha12[:2]
-    if not d.is_dir():
-        return None
-    small = [p for p in d.glob(f"{sha12}*.s*.jpg") if not p.name.endswith(".tmp")]
-    if small:
-        return small[0]
-    for p in d.glob(f"{sha12}*"):
-        if p.suffix != ".tmp":
-            return p
-    return None
+def _find_image(sha: str, mime: str | None) -> Path | None:
+    """返回证据用的那份：优先缩小版，没有就原图。按完整 sha 定位（Codex #12-5：短前缀查目录可能取到同前缀的另一张）。"""
+    sp = small_path(sha)
+    if sp.exists():
+        return sp
+    p = image_path(sha, mime or "image/jpeg")
+    return p if p.exists() else None
 
 
 # ---------- 描述（缓存按 用户 + 图片 隔离，留回复身份） ----------
@@ -387,25 +382,29 @@ async def resolve_text(text: str, images: list[ImageRef], scope: str) -> str:
 
 # ---------- 返回：命中的原图当证据 ----------
 
-def _owned_shas(user_id: str, sha12s: list[str]) -> set[str]:
-    """这些短标签里，哪些图确实以这个 user_id 进过描述缓存。正文里的标签不当凭证（审查 #12-3：谁的正文里写了一串别人的
-    哈希，就能把别人的图带出来）；图片目录是全局按 sha 存的，归属只认 image_cache 的 user_id。"""
+def wanted_tags(items: list[dict]) -> list[str]:
+    """返回正文里出现的全部图片短标签（去重、排序）。"""
+    return sorted({sha12 for it in items if isinstance(it.get("content"), str) for sha12 in MARK.findall(it["content"])})
+
+
+def owned_images(user_id: str, sha12s: list[str]) -> dict[str, tuple[str, str | None]]:
+    """短标签 → (完整 sha, mime)，只认这个 user_id 名下进过描述缓存的图。正文里的标签不当凭证（审查 #12-3：谁的正文里写了
+    一串别人的哈希，就能把别人的图带出来）；图片目录是全局按 sha 存的，归属只认 image_cache 的 user_id。同步查库，调用方放线程池。"""
     if not sha12s:
-        return set()
+        return {}
     with pool.connection() as conn:
-        rows = conn.execute("SELECT DISTINCT left(image_sha, 12) FROM image_cache WHERE user_id = %s AND left(image_sha, 12) = ANY(%s)",
+        rows = conn.execute("SELECT DISTINCT image_sha, mime FROM image_cache WHERE user_id = %s AND left(image_sha, 12) = ANY(%s)",
                             (user_id, sha12s)).fetchall()
-    return {r[0] for r in rows}
+    out: dict[str, tuple[str, str | None]] = {}
+    for sha, mime in rows:
+        out.setdefault(sha[:12], (sha, mime))
+    return out
 
 
-def attach_images(items: list[dict], user_id: str) -> list[dict]:
+def attach_images(items: list[dict], owned: dict[str, tuple[str, str | None]]) -> list[dict]:
     """data[].content 改成有序 ContentPart[]：先是现在的文本（日期头 + 正文，含描述），再把正文里标了 [image <sha12>] 的原图
     按出现顺序带回去，整个响应最多 MM_RETURN_IMAGES 张、MM_RETURN_BYTES 字节；一张图只带一次。text 字段仍是字符串。
-    只带该 user_id 名下描述过的图；标签对不上归属的原样留在正文里、不附图。"""
-    wanted = sorted({sha12 for it in items if isinstance(it.get("content"), str) for sha12 in MARK.findall(it["content"])})
-    owned = _owned_shas(user_id, wanted)
-    if len(owned) < len(wanted):
-        log.warning("attach_images user=%s: %d tag(s) not owned, skipped", user_id[:60], len(wanted) - len(owned))
+    只带 owned（该用户名下的 短标签→完整 sha）里有的图；对不上归属的标签原样留在正文里、不附图。读文件是同步的，调用方放线程池。"""
     n = 0
     used = 0
     seen: set[str] = set()
@@ -417,7 +416,7 @@ def attach_images(items: list[dict], user_id: str) -> list[dict]:
         for sha12 in MARK.findall(content):
             if sha12 in seen or n >= config.MM_RETURN_IMAGES or sha12 not in owned:
                 continue
-            p = _find_image(sha12)
+            p = _find_image(*owned[sha12])
             if p is None:
                 continue
             data = p.read_bytes()

@@ -33,3 +33,24 @@ def test_quota_larger_than_notes_changes_nothing(monkeypatch):
     monkeypatch.setattr(config, "NOTES_MAX_CANDIDATES", 10)
     head, order = search._rerank_head(_idx("nmnm"), [0, 1, 2, 3])
     assert head == [0, 1, 2, 3] and order == [0, 1, 2, 3]
+
+
+def test_must_survives_window_trim_with_quota(monkeypatch):
+    """Codex #12-1：窗口 4、配额 1，候选 0/1 笔记、2–5 原文，must=[4,5]：4 已在窗口里，不能被腾位置时裁掉。"""
+    import asyncio
+    monkeypatch.setattr(config, "RERANK_TOPN", 4)
+    monkeypatch.setattr(config, "NOTES_MAX_CANDIDATES", 1)
+    monkeypatch.setattr(config, "RERANK_ENABLED", False)
+    idx = _idx("nnmmmm")
+    for r in idx.rows:
+        r.id = str(id(r))
+    seen = {}
+    async def fake_rerank(q, docs):
+        return None
+    monkeypatch.setattr(search, "rerank", fake_rerank)
+    monkeypatch.setattr(search, "_render", lambda idx, r: "x")
+    trace = {}
+    out = asyncio.run(search._reranked(idx, "q", [0, 1, 2, 3, 4, 5], {}, must=[4, 5], trace=trace))
+    head = trace["rerank"]["head"]
+    assert idx.rows[4].id in head and idx.rows[5].id in head
+    assert len(head) == 4 and sorted(out) == [0, 1, 2, 3, 4, 5]

@@ -590,6 +590,8 @@ async def search(req: SearchRequest) -> dict[str, Any]:
             raise HTTPException(status_code=503, detail="image captioning temporarily unavailable, retry later") from e
     data = await run_search(req.user_id, query, req.options, req.top_k or config.HARD_TOP_K)
     if config.MM_ENABLED:
-        data = mm.attach_images(data, req.user_id)   # 多模态赛道的 data[].content 是 ContentPart[]：文本 + 命中的原图
+        # 多模态赛道的 data[].content 是 ContentPart[]：文本 + 命中的原图。查归属和读图都是阻塞活，放线程池（Codex #12-6）
+        owned = await asyncio.to_thread(mm.owned_images, req.user_id, mm.wanted_tags(data))
+        data = await asyncio.to_thread(mm.attach_images, data, owned)
     log.info("search user=%s k=%s returned=%d %dms", req.user_id[:60], req.top_k, len(data), int((time.monotonic() - t0) * 1000))
     return {"data": data}
