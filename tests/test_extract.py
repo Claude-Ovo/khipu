@@ -680,4 +680,4 @@ def test_prompt_keeps_date_fallback_and_plans_as_plans():
     assert 'keep the original words and add "(said on 20 May 2023)"' in p
     assert "When the message has a date and the event's time is given or implied" in p
     assert 'stay plans ("plans to", "may"), not done' in p
-    assert extract.PROMPT_VERSION == "x4"
+    assert extract.PROMPT_VERSION == "x4n"

@@ -76,6 +76,21 @@ def test_summary_select_respects_pool_and_note_cap(monkeypatch):
     assert out == [0, 2, 3, 1, 4]
 
 
+def test_all_summaries_take_seats_first(monkeypatch):
+    """SUMMARY_ROUTE_ALL_SUMMARIES：索引里全部 kind=summary 的行先占名额（最多 k 的一半），没被召回的也进；轮选只填剩下的。"""
+    monkeypatch.setattr(config, "SUMMARY_POOL", 200)
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 10)
+    monkeypatch.setattr(config, "SUMMARY_ROUTE_ALL_SUMMARIES", True)
+    rows = [_row(0, 5), _row(1, 6), _row(2, 7), _row(3, 8),            # 原文，相关度顺序 0 1 2 3
+            _row(4, 1, "summary"), _row(5, 9, "summary")]              # 两段摘要，5 没有被召回
+    out = search._summary_select(SimpleNamespace(rows=rows), [0, 1, 2, 3, 4], k=4)
+    # 摘要 4、5 占 2 席，轮选填 2 席：0(5日) 1(6日)；按时间：4(1日) 0 1 5(9日)；其余 2 3 接后面
+    assert out == [4, 0, 1, 5, 2, 3]
+    monkeypatch.setattr(config, "SUMMARY_ROUTE_ALL_SUMMARIES", False)
+    out = search._summary_select(SimpleNamespace(rows=rows), [0, 1, 2, 3, 4], k=4)
+    assert out == [0, 1, 2, 3, 4]   # 关着时摘要 4 只是普通候选：前四个日期组各取一条就满了，4 排在后面；5 没被召回根本不在顺序里
+
+
 def test_summary_select_short_pool_keeps_everything(monkeypatch):
     monkeypatch.setattr(config, "SUMMARY_POOL", 200)
     monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 0)
