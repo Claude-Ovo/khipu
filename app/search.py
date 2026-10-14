@@ -108,16 +108,23 @@ def _summary_select(idx: UserIndex, order: list[int], k: int) -> list[int]:
     各组轮流取（先各取第一条，再各取第二条……）到 k 条为止，选出的按时间从早到晚排；其余候选按原顺序接在后面（装箱时预算放不下才会用到）。
     笔记的返回上限在装箱时照常生效，这里先按 NOTES_MAX_RETURNED 计数，免得轮选把名额都给了笔记再被装箱丢掉。"""
     pool = order[: config.SUMMARY_POOL]
+    summaries: list[int] = []
+    if config.SUMMARY_ROUTE_ALL_SUMMARIES:
+        # 全部会话摘要先占名额（最多占一半），轮选只填剩下的；摘要按 kind 从索引里直接拿，不看这次有没有召回
+        summaries = [r.pos for r in idx.rows if r.kind == "summary"][: max(1, k // 2)]
+    target = k - len(summaries)
+    ss = set(summaries)
     groups: dict[str, list[int]] = {}
     for p in pool:
-        groups.setdefault(_day(idx.rows[p]), []).append(p)
+        if p not in ss:
+            groups.setdefault(_day(idx.rows[p]), []).append(p)
     gl = list(groups.values())   # dict 保持插入顺序 = 各组第一条在 pool 里的先后
-    picked: list[int] = []
-    notes = 0
+    picked: list[int] = list(summaries)
+    notes = len(summaries)
     depth = 0
-    while len(picked) < k and any(len(g) > depth for g in gl):
+    while len(picked) - len(summaries) < target and any(len(g) > depth for g in gl):
         for g in gl:
-            if len(picked) >= k:
+            if len(picked) - len(summaries) >= target:
                 break
             if len(g) <= depth:
                 continue
@@ -165,8 +172,9 @@ def _bm25_channel(idx: UserIndex, q: str, n: int) -> tuple[list[int], dict[int, 
 
 
 def _vector_sql(user_id: str, vec: list[float], n: int) -> list[str]:
+    # 距离并列（重复文本的向量相同）时按 id 定序，不然 LIMIT 截到的那几条在复现时可能换人（抄作业 P0-2）
     sql = ("SELECT id FROM segments WHERE user_id = %s AND embedding IS NOT NULL "
-           + ("" if config.NOTES_IN_SEARCH else "AND kind = 'msg' ") + "ORDER BY embedding <=> %s::vector LIMIT %s")
+           + ("" if config.NOTES_IN_SEARCH else "AND kind = 'msg' ") + "ORDER BY embedding <=> %s::vector, id LIMIT %s")
     with pool.connection() as conn:
         return [r[0] for r in conn.execute(sql, (user_id, np.array(vec, dtype=np.float32), n))]
 
@@ -221,10 +229,13 @@ def _literal_channel(idx: UserIndex, q: str, bm25_scores: dict[int, float]) -> l
 def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
     if intent != "temporal":
         return []
-    rows: set[int] = set()
+    # 每行记它离问到的日期最近几天（月粒度算 0）；先按这个距离排，再按 seq。以前只按 seq，RRF 把最大的分给窗口里最早的那一天，
+    # 而不是问到的那一天（抄作业 P0-3）
+    best: dict[int, int] = {}
     for gran, d in extract_dates(q):  # extract_dates 已过滤非法日期
         if gran == "month":
-            rows |= idx.by_month.get(d, set())
+            for p in idx.by_month.get(d, set()):
+                best[p] = min(best.get(p, 99), 0)
         else:
             base = datetime.strptime(d, "%Y-%m-%d")
             for delta in range(-3, 4):
@@ -232,8 +243,9 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
                     d2 = base + timedelta(days=delta)
                 except OverflowError:
                     continue
-                rows |= idx.by_date.get(d2.strftime("%Y-%m-%d"), set())
-    return sorted(rows, key=lambda p: idx.rows[p].seq)
+                for p in idx.by_date.get(d2.strftime("%Y-%m-%d"), set()):
+                    best[p] = min(best.get(p, 99), abs(delta))
+    return sorted(best, key=lambda p: (best[p], idx.rows[p].seq, p))
 
 
 # ---------- 第二跳（伪相关反馈） ----------

@@ -98,6 +98,9 @@ HISTORY_ENABLED = os.environ.get("HISTORY_ENABLED", "") == "1"
 # 计数题（how many / how much）不走这条：10-08 整部历史的实验证明换顺序对它们没用。只选条和排序，不生成。默认关
 SUMMARY_ROUTE_ENABLED = os.environ.get("SUMMARY_ROUTE_ENABLED", "") == "1"
 SUMMARY_POOL = _int("SUMMARY_POOL", 200)   # 参加日期轮选的候选数（重排后顺序的前这么多条 = 重排窗口）
+# 总结路由时把这个用户全部会话摘要（抽取时每窗一段，kind=summary）都放进返回，不管这次有没有被召回；摘要占的名额从 k 里扣，
+# 轮选只填剩下的。依据：总结题的要点散在整段历史，摘要按窗覆盖全程。摘要仍受 NOTES_MAX_RETURNED 约束，开这个要把上限调高。默认关
+SUMMARY_ROUTE_ALL_SUMMARIES = os.environ.get("SUMMARY_ROUTE_ALL_SUMMARIES", "") == "1"
 # 遗忘指令（10-08）：用户说过「把 X 忘了 / 别再提 X」，之后问到 X 时把那条指令排到第一条（textutil.looks_like_forget）。
 # 只提前不压制：压错了会把真证据弄丢。默认关
 FORGET_ENABLED = os.environ.get("FORGET_ENABLED", "") == "1"

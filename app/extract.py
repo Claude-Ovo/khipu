@@ -30,7 +30,8 @@ from .textutil import WEEKDAYS, count_tokens
 
 log = logging.getLogger("aml.extract")
 
-PROMPT_VERSION = "x4"   # x4 (10-10): x1 date rule verbatim, header date named as the reference, "plans stay plans" as one clause. Heuristic 80-window diffs vs x1 output for x2/x3/x4a/x4b/x5/x6 in collab/prompt-diff (scorer tests/prompt_diff_score.py); x4 is the closest to x1 there. Not re-validated end to end; 10-06 answer numbers are x1's
+PROMPT_VERSION = "x4n"  # x4 (10-10): x1 date rule verbatim, header date named as the reference, "plans stay plans" as one clause. Heuristic 80-window diffs vs x1 output for x2/x3/x4a/x4b/x5/x6 in collab/prompt-diff (scorer tests/prompt_diff_score.py); x4 is the closest to x1 there. Not re-validated end to end; 10-06 answer numbers are x1's.
+                        # x4n (10-15): only the two example key names changed — "caroline"/"melanie" were LoCoMo conv-26 speakers (抄作业 P0-1); wording otherwise identical to x4
 
 SYSTEM_PROMPT = """You turn one chunk of a conversation into memory notes for a long-term memory system. Later, someone will ask questions about the people in the conversation; your notes will be searched together with the original messages.
 
@@ -47,7 +48,7 @@ facts: at most 30 items, each {"text": "...", "subject": "...", "key": "..." or 
 - The assistant's suggestions are not facts about the user. Record them only when the user accepts or acts on one: "The user chose X, which the assistant had suggested." Do not record general knowledge the assistant explains.
 - One fact per item; do not merge unrelated facts. Skip greetings and small talk.
 - subject: the person the fact is about: "user", or the person's name.
-- key: for facts that can change over time, a short lowercase topic key "<subject>.<attribute>", e.g. "user.job", "user.city", "caroline.relationship_status", "melanie.pets", "user.car". Reuse the same key for the same attribute. null for one-off events.
+- key: for facts that can change over time, a short lowercase topic key "<subject>.<attribute>", e.g. "user.job", "user.city", "maya.relationship_status", "user.pets", "user.car". Reuse the same key for the same attribute. null for one-off events.
 
 summary: one to three sentences on what this chunk covers: who talked about what, and the date.
 
