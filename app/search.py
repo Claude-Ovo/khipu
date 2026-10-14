@@ -103,10 +103,11 @@ def _chrono_key(r: Row) -> tuple:
     return (r.ts_value is None, r.ts_value.timestamp() if r.ts_value else 0.0, r.pos)
 
 
-def _summary_select(idx: UserIndex, order: list[int], k: int) -> list[int]:
+def _summary_select(idx: UserIndex, order: list[int], k: int, notes_cap: int | None = None) -> list[int]:
     """总结路由的选条：重排窗口（order 的前 SUMMARY_POOL 条）按日期分组，组内保持相关度顺序，组的先后按各组最相关那条的名次；
     各组轮流取（先各取第一条，再各取第二条……）到 k 条为止，选出的按时间从早到晚排；其余候选按原顺序接在后面（装箱时预算放不下才会用到）。
     笔记的返回上限在装箱时照常生效，这里先按 NOTES_MAX_RETURNED 计数，免得轮选把名额都给了笔记再被装箱丢掉。"""
+    cap = config.NOTES_MAX_RETURNED if notes_cap is None else notes_cap
     pool = order[: config.SUMMARY_POOL]
     summaries: list[int] = []
     if config.SUMMARY_ROUTE_ALL_SUMMARIES:
@@ -129,8 +130,8 @@ def _summary_select(idx: UserIndex, order: list[int], k: int) -> list[int]:
             if len(g) <= depth:
                 continue
             p = g[depth]
-            if idx.rows[p].kind != "msg" and config.NOTES_MAX_RETURNED:
-                if notes >= config.NOTES_MAX_RETURNED:
+            if idx.rows[p].kind != "msg" and cap:
+                if notes >= cap:
                     continue
                 notes += 1
             picked.append(p)
@@ -627,9 +628,11 @@ def build_history_blocks(idx: UserIndex, slots: int, budget: int, q_tokens: set[
 
 
 def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int, trace: dict | None = None,
-         lead: list[dict] | None = None) -> list[dict]:
+         lead: list[dict] | None = None, notes_cap: int | None = None) -> list[dict]:
+    """notes_cap：这次返回里笔记+摘要的上限，None = NOTES_MAX_RETURNED；总结路由传自己的上限（SUMMARY_NOTES_MAX_RETURNED）。"""
     out: list[dict] = []
     used = 0
+    cap = config.NOTES_MAX_RETURNED if notes_cap is None else notes_cap
     for it in lead or []:   # 时间线清单之类的合成条目排最前，同样占 top_k 和预算
         t = count_tokens(it["content"])
         if len(out) < top_k and used + t <= config.BUDGET_TOKENS:
@@ -663,8 +666,8 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
         if p in seen:
             continue
         r = idx.rows[p]
-        is_note = r.kind != "msg" and bool(config.NOTES_MAX_RETURNED)
-        if is_note and notes >= config.NOTES_MAX_RETURNED:
+        is_note = r.kind != "msg" and bool(cap)
+        if is_note and notes >= cap:
             continue
         if not put(p):
             skipped += 1
@@ -780,20 +783,22 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
         o = _with_neighbors(idx, o, k)
         for p in o:
             scores.setdefault(p, 0.0)
+        notes_cap: int | None = None
         if config.SUMMARY_ROUTE_ENABLED and is_summary_query(query):
-            o = _summary_select(idx, o, k)
+            notes_cap = config.SUMMARY_NOTES_MAX_RETURNED or config.NOTES_MAX_RETURNED
+            o = _summary_select(idx, o, k, notes_cap)
             if trace is not None:
                 trace["summary_route"] = True
         if trace is not None:
             trace["pre_box"] = [idx.rows[p].id for p in o[: 3 * k]]   # 规矩口袋和邻居插入之后、装箱之前
         if config.HISTORY_ENABLED and is_ledger_query(query):
-            head = _box(idx, o, scores, min(k, config.HISTORY_HEAD), trace, lead)
+            head = _box(idx, o, scores, min(k, config.HISTORY_HEAD), trace, lead, notes_cap)
             used = sum(count_tokens(it["content"]) for it in head)
             blocks = build_history_blocks(idx, k - len(head), config.HISTORY_BUDGET_TOKENS - used, set(tokenize(q)),
                                           config.HISTORY_BLOCK_TOKENS)
             if trace is not None:
                 trace["history_blocks"] = len(blocks)
             return head + blocks
-        return _box(idx, o, scores, k, trace, lead)
+        return _box(idx, o, scores, k, trace, lead, notes_cap)
 
     return await asyncio.to_thread(finish)

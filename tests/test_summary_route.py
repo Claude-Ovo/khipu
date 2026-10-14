@@ -91,6 +91,27 @@ def test_all_summaries_take_seats_first(monkeypatch):
     assert out == [0, 1, 2, 3, 4]   # 关着时摘要 4 只是普通候选：前四个日期组各取一条就满了，4 排在后面；5 没被召回根本不在顺序里
 
 
+def test_route_scoped_note_cap(monkeypatch):
+    """SUMMARY_NOTES_MAX_RETURNED 只管走路由的那次：_summary_select 和 _box 都按传入的 notes_cap 数笔记，不传就用 NOTES_MAX_RETURNED。"""
+    monkeypatch.setattr(config, "SUMMARY_POOL", 200)
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 1)
+    monkeypatch.setattr(config, "SUMMARY_ROUTE_ALL_SUMMARIES", False)
+    rows = [_row(0, 1, "note"), _row(1, 2, "note"), _row(2, 3, "note"), _row(3, 4)]
+    idx = SimpleNamespace(rows=rows, id_to_pos={})
+    assert search._summary_select(idx, [0, 1, 2, 3], k=10) == [0, 3, 1, 2]              # 默认上限 1：只进一条笔记
+    assert search._summary_select(idx, [0, 1, 2, 3], k=10, notes_cap=3) == [0, 1, 2, 3]  # 路由自己的上限 3
+    monkeypatch.setattr(search, "_render", lambda idx, r: "x")
+    monkeypatch.setattr(search, "_rendered_tokens", lambda idx, p: 1)
+    monkeypatch.setattr(config, "BUDGET_TOKENS", 1000)
+    monkeypatch.setattr(config, "NOTE_SOURCE_PACK", False)
+    for r in rows:
+        r.id = f"r{r.pos}"
+        r.ts_value = None
+        r.ts_granularity = "day"
+    assert [it["id"] for it in search._box(idx, [0, 1, 2, 3], {}, 10)] == ["r0", "r3"]
+    assert [it["id"] for it in search._box(idx, [0, 1, 2, 3], {}, 10, notes_cap=3)] == ["r0", "r1", "r2", "r3"]
+
+
 def test_summary_select_short_pool_keeps_everything(monkeypatch):
     monkeypatch.setattr(config, "SUMMARY_POOL", 200)
     monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 0)
