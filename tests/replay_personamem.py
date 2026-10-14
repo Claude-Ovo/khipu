@@ -62,6 +62,8 @@ def main() -> None:
     ap.add_argument("--skip-add", action="store_true")
     ap.add_argument("--dump", default="")
     ap.add_argument("--only-users", default="", help="文件，每行一个 user_id；只跑这些用户上的题（用来复用已入库的数据）")
+    ap.add_argument("--parallel", type=int, default=1, help="10-15：并行入库的用户数（抽取开着时一次 Add 8–20 s）")
+    ap.add_argument("--no-search", action="store_true", help="10-15：只入库")
     args = ap.parse_args()
 
     ctx: dict[str, list[dict]] = {}
@@ -76,29 +78,63 @@ def main() -> None:
         qs = [q for q in qs if f"replay:{args.tag}:pm:{q['shared_context_id'][:12]}:{q['end_index_in_shared_context']}" in keep]
         print(f"only-users: {len(keep)} users, {len(qs)} questions", flush=True)
 
-    client = httpx.Client(base_url=args.base, headers={"Authorization": f"Bearer {args.token}"} if args.token else {}, timeout=300)
-    dump = open(args.dump, "w", encoding="utf-8") if args.dump else None
-    added: set[str] = set()
-    rows: list[dict] = []
+    headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+    client = httpx.Client(base_url=args.base, headers=headers, timeout=300)
     t_start = time.time()
+    users: dict[str, tuple[str, int]] = {}
+    for q in qs:
+        cid, end = q["shared_context_id"], int(q["end_index_in_shared_context"])
+        users.setdefault(f"replay:{args.tag}:pm:{cid[:12]}:{end}", (cid, end))
+
+    def post_retry(c: httpx.Client, path: str, body: dict) -> httpx.Response:
+        delay = 2.0
+        for i in range(8):
+            try:
+                r = c.post(path, json=body)
+            except httpx.TransportError as e:   # Codex #13 R4：超时/断连也重试，同 request_id 重放对服务端幂等
+                if i == 7:
+                    raise
+                print(f"  retry {path} after {type(e).__name__}", flush=True)
+                time.sleep(delay)
+                delay = min(delay * 2, 60)
+                continue
+            if r.status_code == 409 and path == "/add":   # 同 ID 不同载荷，重试不会变
+                r.raise_for_status()
+            if r.status_code in (408, 425, 429, 500, 502, 503, 504, 524) and i < 7:
+                time.sleep(delay)
+                delay = min(delay * 2, 60)
+                continue
+            r.raise_for_status()
+            return r
+        raise RuntimeError("unreachable")
+
+    def ingest(item: tuple[str, tuple[str, int]]) -> None:
+        user_id, (cid, end) = item
+        c = httpx.Client(base_url=args.base, headers=headers, timeout=300)
+        for k, ch in enumerate(chunks(to_add_messages(ctx[cid], end))):
+            post_retry(c, "/add", {"request_id": f"{user_id}:chunk-{k}", "user_id": user_id, "session_id": f"{user_id}:s0", "messages": ch})
+
+    if not args.skip_add:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as ex:
+            for i, _ in enumerate(ex.map(ingest, list(users.items())), 1):
+                if i % 10 == 0 or i == len(users):
+                    print(f"ingested {i}/{len(users)} users, {time.time() - t_start:.0f}s", flush=True)
+    if args.no_search:
+        return
+    dump = open(args.dump, "w", encoding="utf-8") if args.dump else None
+    added: set[str] = set(users)
+    rows: list[dict] = []
     for qi, q in enumerate(qs):
         cid, end = q["shared_context_id"], int(q["end_index_in_shared_context"])
         user_id = f"replay:{args.tag}:pm:{cid[:12]}:{end}"
-        if not args.skip_add and user_id not in added:
-            msgs = to_add_messages(ctx[cid], end)
-            for k, ch in enumerate(chunks(msgs)):
-                body = {"request_id": f"{user_id}:chunk-{k}", "user_id": user_id, "session_id": f"{user_id}:s0", "messages": ch}
-                r = client.post("/add", json=body)
-                r.raise_for_status()
-            added.add(user_id)
         try:
             options = json.loads(q["all_options"])
         except json.JSONDecodeError:  # CSV 里是 Python 字面量（单引号）
             options = ast.literal_eval(q["all_options"])
         t0 = time.time()
-        r = client.post("/search", json={"query": q["user_question_or_message"], "user_id": user_id, "top_k": args.top_k, "options": options})
+        r = post_retry(client, "/search", {"query": q["user_question_or_message"], "user_id": user_id, "top_k": args.top_k, "options": options})
         dt = time.time() - t0
-        r.raise_for_status()
         items = r.json()["data"]
         if dump is not None:
             context_messages = []
