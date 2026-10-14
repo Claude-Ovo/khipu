@@ -503,7 +503,7 @@ def _effective_config() -> dict[str, Any]:
         "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
         "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
-        "mm": config.MM_ENABLED, "mm_return_images": config.MM_RETURN_IMAGES, "mm_detail": config.MM_DETAIL,
+        "mm": config.MM_ENABLED, "mm_return_images": config.MM_RETURN_IMAGES, "mm_detail": config.MM_DETAIL, "mm_geocode": config.MM_GEOCODE,
     }
 
 
