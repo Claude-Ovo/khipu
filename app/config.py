@@ -101,6 +101,14 @@ SUMMARY_POOL = _int("SUMMARY_POOL", 200)   # 参加日期轮选的候选数（�
 # 总结路由时把这个用户全部会话摘要（抽取时每窗一段，kind=summary）都放进返回，不管这次有没有被召回；摘要占的名额从 k 里扣，
 # 轮选只填剩下的。依据：总结题的要点散在整段历史，摘要按窗覆盖全程。摘要仍受 NOTES_MAX_RETURNED 约束，开这个要把上限调高。默认关
 SUMMARY_ROUTE_ALL_SUMMARIES = os.environ.get("SUMMARY_ROUTE_ALL_SUMMARIES", "") == "1"
+# 笔记旁边贴原话（10-15，抄作业 P1-4）：建索引时给每条事实笔记找同一次 Add（request_id 相同）里词重叠最多的那条原文当来源；
+# 返回里有这条笔记时，来源原文紧跟其后一起给，不占笔记上限。笔记当检索键，原话当证据——笔记挤掉原文的那部分覆盖
+# （LME turn@10 96→91）想靠这个补回来。默认关
+NOTE_SOURCE_PACK = os.environ.get("NOTE_SOURCE_PACK", "") == "1"
+NOTE_SOURCE_MIN_OVERLAP = _int("NOTE_SOURCE_MIN_OVERLAP", 2)   # 笔记与原文至少共有几个实词才算来源
+# 笔记里的事件日期进日期通道（10-15，抄作业 P1-1）：笔记的时间头是「哪天说的」，正文里写的是事件的绝对日期；
+# 建索引时把正文里的日期也挂进 by_date / by_month，问「X 月 Y 日发生了什么」时日期通道能召回笔记。默认关
+NOTE_EVENT_DATES = os.environ.get("NOTE_EVENT_DATES", "") == "1"
 # 遗忘指令（10-08）：用户说过「把 X 忘了 / 别再提 X」，之后问到 X 时把那条指令排到第一条（textutil.looks_like_forget）。
 # 只提前不压制：压错了会把真证据弄丢。默认关
 FORGET_ENABLED = os.environ.get("FORGET_ENABLED", "") == "1"

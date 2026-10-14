@@ -493,6 +493,7 @@ def _effective_config() -> dict[str, Any]:
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
         "summary_route": config.SUMMARY_ROUTE_ENABLED, "summary_pool": config.SUMMARY_POOL,
         "summary_all_summaries": config.SUMMARY_ROUTE_ALL_SUMMARIES,
+        "note_source_pack": config.NOTE_SOURCE_PACK, "note_event_dates": config.NOTE_EVENT_DATES,
     }
 
 

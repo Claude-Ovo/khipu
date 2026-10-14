@@ -637,31 +637,50 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
             used += t
     skipped = 0
     notes = 0
-    for p in order:
-        if len(out) >= top_k:
-            break
+    packed = 0
+    seen: set[int] = set()   # 已装入的行号：来源原文贴过一次，后面再按名次轮到它就跳过
+    sources = getattr(idx, "note_source", {}) if config.NOTE_SOURCE_PACK else {}
+
+    def put(p: int) -> bool:
+        nonlocal used
         r = idx.rows[p]
-        is_note = r.kind != "msg" and bool(config.NOTES_MAX_RETURNED)
-        if is_note and notes >= config.NOTES_MAX_RETURNED:
-            continue
         t = _rendered_tokens(idx, p)
         if used + t > config.BUDGET_TOKENS:
-            skipped += 1
-            continue  # 整条跳过，绝不截断
+            return False  # 整条跳过，绝不截断
         content = _render(idx, r)
         item = {"id": r.id, "content": content, "text": content, "score": round(scores.get(p, 0.0), 6)}  # text 与 content 同值：CL-Bench 管线读的是 text，空 text 静默跳过
         ca = created_at_value(r.ts_value, r.ts_granularity)
         if ca:
             item["created_at"] = ca
         out.append(item)
+        seen.add(p)
         used += t
+        return True
+
+    for p in order:
+        if len(out) >= top_k:
+            break
+        if p in seen:
+            continue
+        r = idx.rows[p]
+        is_note = r.kind != "msg" and bool(config.NOTES_MAX_RETURNED)
+        if is_note and notes >= config.NOTES_MAX_RETURNED:
+            continue
+        if not put(p):
+            skipped += 1
+            continue
         if is_note:
             notes += 1  # 只数真正返回的笔记（审查 #8-4：预算放不下的那条以前也占配额）
+        # 笔记旁边贴原话（NOTE_SOURCE_PACK）：这条事实笔记的来源原文紧跟其后，占条数和预算，不占笔记上限
+        s = sources.get(p) if r.kind == "note" else None
+        if s is not None and s not in seen and len(out) < top_k and put(s):
+            packed += 1
     if trace is not None:
         trace["boxed"] = [{"id": it["id"], "tokens": (_rendered_tokens(idx, idx.id_to_pos[it["id"]]) if it["id"] in idx.id_to_pos
                                                        else count_tokens(it["content"]))} for it in out]
         trace["boxed_tokens"] = used
         trace["budget_skipped"] = skipped
+        trace["packed_sources"] = packed
     return out
 
 

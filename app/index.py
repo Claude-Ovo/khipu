@@ -14,7 +14,7 @@ from rank_bm25 import BM25Okapi
 
 from . import config
 from .db import pool
-from .textutil import date_strings, extract_names, looks_like_forget, same_person, tokenize
+from .textutil import date_strings, extract_dates, extract_names, looks_like_forget, same_person, tokenize
 
 
 _ALIAS_WORD_RX = re.compile(r"\w+")
@@ -59,6 +59,7 @@ class Row:
     kind: str = "msg"            # msg 原文 / note 抽出的事实行 / summary 会话摘要（B3）
     note_key: str | None = None
     note_tag: str = ""           # EXTRACT_MARK_LATEST 时同话题键的新旧标记，渲染时接在正文后
+    request_id: str = ""         # 哪一次 Add 写的：笔记找来源原文只在同一次 Add 里找（NOTE_SOURCE_PACK）
 
 
 @dataclass
@@ -83,6 +84,7 @@ class UserIndex:
     token_cache: dict[int, int] = field(default_factory=dict)   # 行号 -> 渲染后的 token 数（search._rendered_tokens 按需填）
     speakers: frozenset[str] = frozenset()   # 原文里出现过的说话人名（LoCoMo 这类有名字的对话）；笔记的主语是其中之一时挂到他名下渲染
     forget_rows: list[int] = field(default_factory=list)   # 遗忘/撤回指令的原文段（建索引时按正则认，不进库）
+    note_source: dict[int, int] = field(default_factory=dict)   # 事实笔记行号 -> 同一次 Add 里的来源原文行号（NOTE_SOURCE_PACK）
 
 
 _cache: OrderedDict[str, UserIndex] = OrderedDict()
@@ -99,14 +101,47 @@ def invalidate(user_id: str) -> None:
 
 def _load_rows(user_id: str) -> list[Row]:
     sql = ("SELECT id, session_id, seq, part, total, role, speaker_name, ts_value, ts_granularity, text, is_rule, "
-           "embedding IS NOT NULL, kind, note_key FROM segments WHERE user_id = %s"
+           "embedding IS NOT NULL, kind, note_key, request_id FROM segments WHERE user_id = %s"
            + ("" if config.NOTES_IN_SEARCH else " AND kind = 'msg'") + " ORDER BY session_id, seq, part")
     rows: list[Row] = []
     with pool.connection() as conn:
         for pos, r in enumerate(conn.execute(sql, (user_id,))):
             rows.append(Row(pos, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11],
-                            kind=r[12], note_key=r[13]))
+                            kind=r[12], note_key=r[13], request_id=r[14] or ""))
     return rows
+
+
+def link_note_sources(rows: list[Row], token_sets: list[set[str]], min_overlap: int) -> dict[int, int]:
+    """每条事实笔记（kind=note）→ 同一次 Add（request_id 相同）里与它词重叠最多的原文行；共有实词少于 min_overlap 不连。
+    并列取存储位置靠前的那条。只看库里的行和建索引时的词集合，结果确定。摘要覆盖整窗，没有单一来源，不连。"""
+    by_req: dict[str, list[int]] = {}
+    for r in rows:
+        if r.kind == "msg" and r.request_id:
+            by_req.setdefault(r.request_id, []).append(r.pos)
+    out: dict[int, int] = {}
+    for r in rows:
+        if r.kind != "note" or not r.request_id:
+            continue
+        nt = token_sets[r.pos]
+        best, best_n = None, min_overlap - 1
+        for p in by_req.get(r.request_id, ()):
+            n = len(nt & token_sets[p])
+            if n > best_n:
+                best, best_n = p, n
+        if best is not None:
+            out[r.pos] = best
+    return out
+
+
+def note_event_dates(rows: list[Row]) -> list[tuple[int, str, str]]:
+    """事实笔记正文里写的绝对日期：[(行号, 粒度 day|month, 日期键)]。x4 的提示词让模型把相对时间换算成绝对日期写进正文，
+    这里把它们挂进日期通道；笔记自己的时间头仍是「哪天说的」。摘要不算。"""
+    out: list[tuple[int, str, str]] = []
+    for r in rows:
+        if r.kind == "note":
+            for gran, d in extract_dates(r.text):
+                out.append((r.pos, gran, d))
+    return out
 
 
 def _index_text(row: Row) -> str:
@@ -262,11 +297,20 @@ def _build(user_id: str, version: int) -> UserIndex:
             rule_rows.append(r.pos)
         if r.session_id not in session_label:
             session_label[r.session_id] = f"session {len(session_label) + 1}"
+    if config.NOTE_EVENT_DATES:
+        for pos, gran, d in note_event_dates(rows):
+            if gran == "month":
+                by_month.setdefault(d, set()).add(pos)
+            else:
+                by_date.setdefault(d, set()).add(pos)
+                by_month.setdefault(d[:7], set()).add(pos)
+    note_source = link_note_sources(rows, token_sets, config.NOTE_SOURCE_MIN_OVERLAP) if config.NOTE_SOURCE_PACK else {}
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
                      {r.id: r.pos for r in rows}, version, token_sets,
                      alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts,
                      speakers=frozenset(r.speaker_name for r in rows if r.kind == "msg" and r.speaker_name),
-                     forget_rows=[r.pos for r in rows if r.kind == "msg" and looks_like_forget(r.text, r.role)])
+                     forget_rows=[r.pos for r in rows if r.kind == "msg" and looks_like_forget(r.text, r.role)],
+                     note_source=note_source)
 
 
 def get_index(user_id: str) -> UserIndex:
