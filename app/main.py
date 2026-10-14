@@ -491,6 +491,7 @@ def _effective_config() -> dict[str, Any]:
         "forget": config.FORGET_ENABLED, "chain": config.CHAIN_ENABLED, "history": config.HISTORY_ENABLED,
         "ledger": config.LEDGER_ENABLED, "span": config.SPAN_ENABLED, "hop": config.HOP_ENABLED,
         "mark_latest": config.EXTRACT_MARK_LATEST, "rerank": config.RERANK_ENABLED, "fusion_rule": config.FUSION_RULE,
+        "summary_route": config.SUMMARY_ROUTE_ENABLED, "summary_pool": config.SUMMARY_POOL,
     }
 
 

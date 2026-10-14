@@ -92,6 +92,12 @@ SPAN_ENABLED = os.environ.get("SPAN_ENABLED", "") == "1"
 # 依据：LoCoMo 一段对话约 18k token、LME 一题约 102k、平台平均约 50k，大多数用户的整部记忆放得下；top-k 捞片段覆盖不到「全部」。
 # 放不下时按与问题的词重叠丢掉最不相关的块。不调模型。默认关
 HISTORY_ENABLED = os.environ.get("HISTORY_ENABLED", "") == "1"
+# 总结/历程路由（10-15）：问「总结 / 概述 / 怎么变化的 / 历程 / 趋势」时，返回的 100 条不再按相关度取前 100，而是在重排窗口
+# （前 SUMMARY_POOL 条）里按日期分组、各组轮流取（每个日期先各取最相关的一条，再各取第二条……），最后按时间从早到晚排。
+# 依据：9-28 BEAM 总结题的评分要点只有 28% 出现在按相关度取的前 100 条里——事实散在很多会话，按相关度取天然集中在少数几段。
+# 计数题（how many / how much）不走这条：10-08 整部历史的实验证明换顺序对它们没用。只选条和排序，不生成。默认关
+SUMMARY_ROUTE_ENABLED = os.environ.get("SUMMARY_ROUTE_ENABLED", "") == "1"
+SUMMARY_POOL = _int("SUMMARY_POOL", 200)   # 参加日期轮选的候选数（重排后顺序的前这么多条 = 重排窗口）
 # 遗忘指令（10-08）：用户说过「把 X 忘了 / 别再提 X」，之后问到 X 时把那条指令排到第一条（textutil.looks_like_forget）。
 # 只提前不压制：压错了会把真证据弄丢。默认关
 FORGET_ENABLED = os.environ.get("FORGET_ENABLED", "") == "1"

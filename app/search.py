@@ -77,6 +77,62 @@ def is_ledger_query(query: str) -> bool:
     return bool(_LEDGER_RX.search(query))
 
 
+# 总结/历程路由（10-15，config.SUMMARY_ROUTE_ENABLED）：只认明确要「总结 / 概述 / 变化历程 / 趋势」的问法；
+# 以 how many / how much 起头的计数题不走，它们要的是「全」不是「匀」
+_SUMMARY_RX = re.compile(
+    r"\bsummar\w*\b|\boverview\b|\brecap\b|\boutline\b|\bsynthesi[sz]e\b|"
+    r"\b(?:walk|take|run) me through\b|\bgive me (?:a |an )?(?:account|rundown|picture) of\b|"
+    r"\bhow (?:has|have|did|do|does) .{0,60}?\b(?:chang|evolv|develop|progress|grow|shift|unfold)|"
+    r"\b(?:evolution|progression|trajectory|timeline|chronolog\w*) of\b|"
+    r"\bhistory of\b|"
+    r"\b(?:what|any|notice|see|observe|is there|are there|identify|spot) .{0,40}?\b(?:trend|pattern)s?\b|"
+    r"总结|概括|概述|回顾|梳理|历程|变化过程|发展过程|趋势|规律", re.I)
+# 不走路由的问法：计数（允许 please / could you tell me 这类前缀）、问时间点、问当前值——这些要的是「准」不是「匀」
+_COUNT_RX = re.compile(
+    r"^\s*(?:(?:please|could you|can you|would you|tell me|just)[ ,]*)*(?:how many|how much|how often|how frequently|count|what(?:'s| is) the total)\b|"
+    r"几次|多少次|多少钱|多少个|多少天|一共|总共|总计|统计一下", re.I)
+_POINT_RX = re.compile(r"^\s*(?:(?:please|could you|can you|would you|tell me|just)[ ,]*)*(?:when (?:did|was|were|is|do|does)|what(?:'s| is| was) (?:my|the|our) (?:current|latest|most recent|new)|where (?:did|is|was))\b", re.I)
+
+
+def is_summary_query(query: str) -> bool:
+    return bool(_SUMMARY_RX.search(query)) and not _COUNT_RX.search(query) and not _POINT_RX.search(query)
+
+
+def _chrono_key(r: Row) -> tuple:
+    # 同一时刻（BEAM 的时间锚只到天）的多条按存储位置排：会话之间不交错，会话内按 seq/part（pos 就是这个顺序）
+    return (r.ts_value is None, r.ts_value.timestamp() if r.ts_value else 0.0, r.pos)
+
+
+def _summary_select(idx: UserIndex, order: list[int], k: int) -> list[int]:
+    """总结路由的选条：重排窗口（order 的前 SUMMARY_POOL 条）按日期分组，组内保持相关度顺序，组的先后按各组最相关那条的名次；
+    各组轮流取（先各取第一条，再各取第二条……）到 k 条为止，选出的按时间从早到晚排；其余候选按原顺序接在后面（装箱时预算放不下才会用到）。
+    笔记的返回上限在装箱时照常生效，这里先按 NOTES_MAX_RETURNED 计数，免得轮选把名额都给了笔记再被装箱丢掉。"""
+    pool = order[: config.SUMMARY_POOL]
+    groups: dict[str, list[int]] = {}
+    for p in pool:
+        groups.setdefault(_day(idx.rows[p]), []).append(p)
+    gl = list(groups.values())   # dict 保持插入顺序 = 各组第一条在 pool 里的先后
+    picked: list[int] = []
+    notes = 0
+    depth = 0
+    while len(picked) < k and any(len(g) > depth for g in gl):
+        for g in gl:
+            if len(picked) >= k:
+                break
+            if len(g) <= depth:
+                continue
+            p = g[depth]
+            if idx.rows[p].kind != "msg" and config.NOTES_MAX_RETURNED:
+                if notes >= config.NOTES_MAX_RETURNED:
+                    continue
+                notes += 1
+            picked.append(p)
+        depth += 1
+    picked.sort(key=lambda p: _chrono_key(idx.rows[p]))
+    ps = set(picked)
+    return picked + [p for p in order if p not in ps]
+
+
 def detect_intent(query: str) -> str:
     for name, rx in _INTENT:
         if rx.search(query):
@@ -693,6 +749,10 @@ async def search(user_id: str, query: str, options: list[str] | None, top_k: int
         o = _with_neighbors(idx, o, k)
         for p in o:
             scores.setdefault(p, 0.0)
+        if config.SUMMARY_ROUTE_ENABLED and is_summary_query(query):
+            o = _summary_select(idx, o, k)
+            if trace is not None:
+                trace["summary_route"] = True
         if trace is not None:
             trace["pre_box"] = [idx.rows[p].id for p in o[: 3 * k]]   # 规矩口袋和邻居插入之后、装箱之前
         if config.HISTORY_ENABLED and is_ledger_query(query):
