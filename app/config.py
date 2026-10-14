@@ -101,6 +101,7 @@ SUMMARY_POOL = _int("SUMMARY_POOL", 200)   # 参加日期轮选的候选数（�
 # 总结路由时把这个用户全部会话摘要（抽取时每窗一段，kind=summary）都放进返回，不管这次有没有被召回；摘要占的名额从 k 里扣，
 # 轮选只填剩下的。依据：总结题的要点散在整段历史，摘要按窗覆盖全程。摘要仍受 NOTES_MAX_RETURNED 约束，开这个要把上限调高。默认关
 SUMMARY_ROUTE_ALL_SUMMARIES = os.environ.get("SUMMARY_ROUTE_ALL_SUMMARIES", "") == "1"
+SUMMARY_NOTES_MAX_RETURNED = _int("SUMMARY_NOTES_MAX_RETURNED", 0)   # 走总结路由的那次返回里笔记+摘要的上限；0 = 用 NOTES_MAX_RETURNED。别的问法不受影响
 # 笔记旁边贴原话（10-15，抄作业 P1-4）：建索引时给每条事实笔记找同一次 Add（request_id 相同）里词重叠最多的那条原文当来源；
 # 返回里有这条笔记时，来源原文紧跟其后一起给，不占笔记上限。笔记当检索键，原话当证据——笔记挤掉原文的那部分覆盖
 # （LME turn@10 96→91）想靠这个补回来。默认关
