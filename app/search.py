@@ -111,8 +111,11 @@ def _summary_select(idx: UserIndex, order: list[int], k: int, notes_cap: int | N
     pool = order[: config.SUMMARY_POOL]
     summaries: list[int] = []
     if config.SUMMARY_ROUTE_ALL_SUMMARIES:
-        # 全部会话摘要先占名额（最多占一半），轮选只填剩下的；摘要按 kind 从索引里直接拿，不看这次有没有召回
-        summaries = [r.pos for r in idx.rows if r.kind == "summary"][: max(1, k // 2)]
+        # 全部会话摘要先占名额（最多占一半，也不超过笔记上限），轮选只填剩下的；摘要按 kind 从索引里直接拿，不看这次有没有召回
+        limit = max(1, k // 2)
+        if cap:
+            limit = min(limit, cap)
+        summaries = [r.pos for r in idx.rows if r.kind == "summary"][:limit]
     target = k - len(summaries)
     ss = set(summaries)
     groups: dict[str, list[int]] = {}
@@ -233,8 +236,12 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
     # 每行记它离问到的日期最近几天（月粒度算 0）；先按这个距离排，再按 seq。以前只按 seq，RRF 把最大的分给窗口里最早的那一天，
     # 而不是问到的那一天（抄作业 P0-3）
     best: dict[int, int] = {}
-    for gran, d in extract_dates(q):  # extract_dates 已过滤非法日期
+    dates = extract_dates(q)  # extract_dates 已过滤非法日期
+    day_months = {d[:7] for g, d in dates if g == "day"}
+    for gran, d in dates:
         if gran == "month":
+            if d in day_months:
+                continue  # 「20 May 2023」同时解析出 2023-05-20 和 2023-05，整月那条是子匹配：不扩召、也不让它把日距离归零（Codex #14 E1）
             for p in idx.by_month.get(d, set()):
                 best[p] = min(best.get(p, 99), 0)
         else:
@@ -641,6 +648,8 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
     skipped = 0
     notes = 0
     packed = 0
+    source_skipped = 0
+    pack_log: list[tuple[str, str, str]] = []
     seen: set[int] = set()   # 已装入的行号：来源原文贴过一次，后面再按名次轮到它就跳过
     sources = getattr(idx, "note_source", {}) if config.NOTE_SOURCE_PACK else {}
 
@@ -674,16 +683,26 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
             continue
         if is_note:
             notes += 1  # 只数真正返回的笔记（审查 #8-4：预算放不下的那条以前也占配额）
-        # 笔记旁边贴原话（NOTE_SOURCE_PACK）：这条事实笔记的来源原文紧跟其后，占条数和预算，不占笔记上限
+        # 笔记旁边贴原话（NOTE_SOURCE_PACK）：这条事实笔记的来源原文紧跟其后，占条数和预算，不占笔记上限。尽力追加：
+        # 来源放不下（预算 / 条数）时笔记照样留着，只在 trace 里记一笔
         s = sources.get(p) if r.kind == "note" else None
-        if s is not None and s not in seen and len(out) < top_k and put(s):
-            packed += 1
+        if s is not None and s not in seen and len(out) < top_k:
+            if put(s):
+                packed += 1
+                pack_log.append((r.id, idx.rows[s].id, "packed"))
+            else:
+                source_skipped += 1
+                pack_log.append((r.id, idx.rows[s].id, "budget"))
+        elif s is not None and s in seen:
+            pack_log.append((r.id, idx.rows[s].id, "already_present"))
     if trace is not None:
         trace["boxed"] = [{"id": it["id"], "tokens": (_rendered_tokens(idx, idx.id_to_pos[it["id"]]) if it["id"] in idx.id_to_pos
                                                        else count_tokens(it["content"]))} for it in out]
         trace["boxed_tokens"] = used
         trace["budget_skipped"] = skipped
         trace["packed_sources"] = packed
+        trace["source_budget_skipped"] = source_skipped
+        trace["source_pack"] = [{"note": n, "source": s, "status": st} for n, s, st in pack_log]
     return out
 
 

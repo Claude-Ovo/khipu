@@ -14,7 +14,7 @@ from rank_bm25 import BM25Okapi
 
 from . import config
 from .db import pool
-from .textutil import date_strings, extract_dates, extract_names, looks_like_forget, same_person, tokenize
+from .textutil import content_tokens, date_strings, extract_dates, extract_names, looks_like_forget, same_person, tokenize
 
 
 _ALIAS_WORD_RX = re.compile(r"\w+")
@@ -111,9 +111,12 @@ def _load_rows(user_id: str) -> list[Row]:
     return rows
 
 
-def link_note_sources(rows: list[Row], token_sets: list[set[str]], min_overlap: int) -> dict[int, int]:
-    """每条事实笔记（kind=note）→ 同一次 Add（request_id 相同）里与它词重叠最多的原文行；共有实词少于 min_overlap 不连。
-    并列取存储位置靠前的那条。只看库里的行和建索引时的词集合，结果确定。摘要覆盖整窗，没有单一来源，不连。"""
+def link_note_sources(rows: list[Row], content: list[set[str]], min_overlap: int, min_coverage: float) -> dict[int, int]:
+    """每条事实笔记（kind=note）→ 同一次 Add（request_id 相同）里正文实词重叠最多的原文行。
+    content 是每行的正文实词集合（textutil.content_tokens：不含日期头、说话人、功能词——Codex #14 A1：用 BM25 的词集合时
+    同一天的日期头就够两个词，无关原文也会连上）。门槛：共有实词 ≥ min_overlap，且覆盖笔记实词的比例 ≥ min_coverage；
+    按（覆盖比例, 共有词数, 存储位置靠前）取最好的一条；没有够格的就不连。单一来源不保证盖住笔记的全部事实（合并事实、长消息分片），
+    这是已知限制。摘要覆盖整窗，没有单一来源，不连。只看库里的行，结果确定。"""
     by_req: dict[str, list[int]] = {}
     for r in rows:
         if r.kind == "msg" and r.request_id:
@@ -122,12 +125,20 @@ def link_note_sources(rows: list[Row], token_sets: list[set[str]], min_overlap: 
     for r in rows:
         if r.kind != "note" or not r.request_id:
             continue
-        nt = token_sets[r.pos]
-        best, best_n = None, min_overlap - 1
+        nt = content[r.pos]
+        if len(nt) < min_overlap:
+            continue
+        best, best_key = None, None
         for p in by_req.get(r.request_id, ()):
-            n = len(nt & token_sets[p])
-            if n > best_n:
-                best, best_n = p, n
+            n = len(nt & content[p])
+            if n < min_overlap:
+                continue
+            cov = n / len(nt)
+            if cov < min_coverage:
+                continue
+            key = (cov, n, -p)
+            if best_key is None or key > best_key:
+                best, best_key = p, key
         if best is not None:
             out[r.pos] = best
     return out
@@ -304,7 +315,10 @@ def _build(user_id: str, version: int) -> UserIndex:
             else:
                 by_date.setdefault(d, set()).add(pos)
                 by_month.setdefault(d[:7], set()).add(pos)
-    note_source = link_note_sources(rows, token_sets, config.NOTE_SOURCE_MIN_OVERLAP) if config.NOTE_SOURCE_PACK else {}
+    note_source: dict[int, int] = {}
+    if config.NOTE_SOURCE_PACK:
+        content = [content_tokens(r.text) for r in rows]
+        note_source = link_note_sources(rows, content, config.NOTE_SOURCE_MIN_OVERLAP, config.NOTE_SOURCE_MIN_COVERAGE)
     return UserIndex(user_id, rows, bm25, groups, alias, by_date, by_month, rule_rows, session_label,
                      {r.id: r.pos for r in rows}, version, token_sets,
                      alias_words=alias_words, alias_patterns=alias_patterns, lower_texts=lower_texts,

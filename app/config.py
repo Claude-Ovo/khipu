@@ -106,7 +106,8 @@ SUMMARY_NOTES_MAX_RETURNED = _int("SUMMARY_NOTES_MAX_RETURNED", 0)   # 走总结
 # 返回里有这条笔记时，来源原文紧跟其后一起给，不占笔记上限。笔记当检索键，原话当证据——笔记挤掉原文的那部分覆盖
 # （LME turn@10 96→91）想靠这个补回来。默认关
 NOTE_SOURCE_PACK = os.environ.get("NOTE_SOURCE_PACK", "") == "1"
-NOTE_SOURCE_MIN_OVERLAP = _int("NOTE_SOURCE_MIN_OVERLAP", 2)   # 笔记与原文至少共有几个实词才算来源
+NOTE_SOURCE_MIN_OVERLAP = _int("NOTE_SOURCE_MIN_OVERLAP", 2)   # 笔记与原文至少共有几个正文实词才算来源
+NOTE_SOURCE_MIN_COVERAGE = _float("NOTE_SOURCE_MIN_COVERAGE", 0.5)   # 共有实词至少占笔记实词的这个比例（Codex #14 A1 的待验证起点）
 # 笔记里的事件日期进日期通道（10-15，抄作业 P1-1）：笔记的时间头是「哪天说的」，正文里写的是事件的绝对日期；
 # 建索引时把正文里的日期也挂进 by_date / by_month，问「X 月 Y 日发生了什么」时日期通道能召回笔记。默认关
 NOTE_EVENT_DATES = os.environ.get("NOTE_EVENT_DATES", "") == "1"
