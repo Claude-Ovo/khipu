@@ -112,6 +112,16 @@ def test_route_scoped_note_cap(monkeypatch):
     assert [it["id"] for it in search._box(idx, [0, 1, 2, 3], {}, 10, notes_cap=3)] == ["r0", "r1", "r2", "r3"]
 
 
+def test_all_summaries_preselection_respects_note_cap(monkeypatch):
+    """Codex #14 补充：摘要先占名额也不能超过这次的笔记上限。"""
+    monkeypatch.setattr(config, "SUMMARY_POOL", 200)
+    monkeypatch.setattr(config, "SUMMARY_ROUTE_ALL_SUMMARIES", True)
+    rows = [_row(0, 9), _row(1, 1, "summary"), _row(2, 2, "summary"), _row(3, 3, "summary")]
+    out = search._summary_select(SimpleNamespace(rows=rows), [0, 1, 2, 3], k=6, notes_cap=1)
+    assert out[:2] == [1, 0]   # 只预占 1 条摘要（最早那条），再轮选原文 0；其余摘要按原顺序接后面
+    monkeypatch.setattr(config, "SUMMARY_ROUTE_ALL_SUMMARIES", False)
+
+
 def test_summary_select_short_pool_keeps_everything(monkeypatch):
     monkeypatch.setattr(config, "SUMMARY_POOL", 200)
     monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 0)

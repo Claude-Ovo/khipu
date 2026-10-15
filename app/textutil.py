@@ -42,6 +42,23 @@ def tokenize(text: str) -> list[str]:
     return words
 
 
+# 功能词 + 角色词（与 search._HOP_STOP 同一份词表）：给笔记找来源原文时不算数（Codex #14 A1：日期头和 the/is 这种词两个就能把无关原文连上）
+FUNCTION_WORDS = frozenset("""the and for that this with have has had was were are you your yours our ours they them their there here
+what when where which who whom how why not but can could would should will just also very really about from into than then
+them some any all more most much many few lot lots one two three like get got going went make made take took come came
+think know want need let see look feel felt say said tell told ask asked yes yeah okay sure thanks thank please sorry
+been being does did doing done its it's i'm i've i'd i'll you're we're they're don't didn't doesn't can't won't isn't
+because while though although since after before again still even ever never always often sometimes today yesterday
+tomorrow week weeks month months year years day days time times thing things something anything nothing everything
+user assistant note summary
+to in of on at is it an as by or so do up no my me we he she his her him am be if go am""".split())
+
+
+def content_tokens(text: str) -> set[str]:
+    """正文实词集合：只看正文（不带日期头、说话人），去功能词和角色词。index.link_note_sources 用它找笔记的来源原文。"""
+    return {t for t in tokenize(text) if t not in FUNCTION_WORDS}
+
+
 def split_sentences(text: str) -> list[str]:
     parts = [p for p in _SENT.split(text) if p.strip()]
     return parts or [text]
