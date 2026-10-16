@@ -16,7 +16,7 @@ from .embed import embed_query
 from .httpclient import usage
 from .rerank import rerank
 from .index import Row, UserIndex, get_index
-from .textutil import WEEKDAYS, count_tokens, created_at_value, date_header, extract_dates, literal_terms, tokenize
+from .textutil import WEEKDAYS, count_tokens, created_at_value, date_header, extract_date_spans, literal_terms, tokenize
 
 log = logging.getLogger("aml.search")
 
@@ -236,12 +236,13 @@ def _date_channel(idx: UserIndex, q: str, intent: str) -> list[int]:
     # 每行记它离问到的日期最近几天（月粒度算 0）；先按这个距离排，再按 seq。以前只按 seq，RRF 把最大的分给窗口里最早的那一天，
     # 而不是问到的那一天（抄作业 P0-3）
     best: dict[int, int] = {}
-    dates = extract_dates(q)  # extract_dates 已过滤非法日期
-    day_months = {d[:7] for g, d in dates if g == "day"}
-    for gran, d in dates:
+    dates = extract_date_spans(q)  # 已过滤非法日期
+    day_spans = [(s, e) for g, _, s, e in dates if g == "day"]
+    for gran, d, s, e in dates:
         if gran == "month":
-            if d in day_months:
-                continue  # 「20 May 2023」同时解析出 2023-05-20 和 2023-05，整月那条是子匹配：不扩召、也不让它把日距离归零（Codex #14 E1）
+            if any(s >= ds and e <= de for ds, de in day_spans):
+                continue  # 「20 May 2023」里的「May 2023」是子匹配：不扩召、也不让它把日距离归零（Codex #14 E1）。
+                #           按位置判，不按月份值判：单独写出的「… and throughout May 2023」仍是整月条件（Codex #15 B）
             for p in idx.by_month.get(d, set()):
                 best[p] = min(best.get(p, 99), 0)
         else:
@@ -695,6 +696,8 @@ def _box(idx: UserIndex, order: list[int], scores: dict[int, float], top_k: int,
                 pack_log.append((r.id, idx.rows[s].id, "budget"))
         elif s is not None and s in seen:
             pack_log.append((r.id, idx.rows[s].id, "already_present"))
+        elif s is not None:
+            pack_log.append((r.id, idx.rows[s].id, "top_k"))   # 条数满了，来源追不上；笔记照留（Codex #15 B）
     if trace is not None:
         trace["boxed"] = [{"id": it["id"], "tokens": (_rendered_tokens(idx, idx.id_to_pos[it["id"]]) if it["id"] in idx.id_to_pos
                                                        else count_tokens(it["content"]))} for it in out]

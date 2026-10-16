@@ -129,3 +129,31 @@ def test_date_channel_day_beats_month_submatch():
     for q in ("What happened on 2023-05-20?", "What happened on May 20, 2023?", "What happened on 20 May 2023?"):
         assert search._date_channel(idx, q, "temporal") == [1, 0], q   # 问到的那天先，3 天内的次之，月初的不进
     assert search._date_channel(idx, "What did I do in May 2023?", "temporal") == [0, 1, 2]   # 真正问整月时照旧
+    # Codex #15 B：完整日期之外单独写出的同一个月，整月条件保留（旧通道也是 [0, 1, 2]）；异月独立写出的不影响
+    assert search._date_channel(idx, "What happened on 2023-05-20 and throughout May 2023?", "temporal") == [0, 1, 2]
+    assert search._date_channel(idx, "On May 20, 2023, and then in June 2023?", "temporal") == [1, 0]
+
+
+def test_link_skips_blank_request_id_and_empty_content():
+    """Codex #15 C/E：request_id 空串或 None 不连、不抛；min_overlap=0 时空实词集合（「the user」）不除零。"""
+    rows = [_row(0, "msg", "", "Bananas ripen quickly."), _row(1, "note", "", "The user adopted a golden retriever named Max."),
+            _row(2, "msg", None, "Volcanoes erupt violently."), _row(3, "note", None, "The user is allergic to peanuts."),
+            _row(4, "msg", "A", "the user"), _row(5, "note", "A", "the user")]
+    assert _link(rows) == {}
+    assert _link(rows, min_overlap=0, min_coverage=0.0) == {}
+
+
+def test_box_source_blocked_by_top_k_is_traced(monkeypatch):
+    """Codex #15 B：top_k 满了来源追不上，trace 记 top_k，不越界，笔记照留。"""
+    monkeypatch.setattr(config, "NOTE_SOURCE_PACK", True)
+    monkeypatch.setattr(config, "NOTES_MAX_RETURNED", 20)
+    monkeypatch.setattr(config, "BUDGET_TOKENS", 1000)
+    monkeypatch.setattr(search, "_render", lambda idx, r: "x")
+    monkeypatch.setattr(search, "_rendered_tokens", lambda idx, p: 1)
+    rows = [_row(0, "msg", "A"), _row(1, "note", "A")]
+    idx = SimpleNamespace(rows=rows, note_source={1: 0}, id_to_pos={r.id: r.pos for r in rows})
+    trace = {}
+    out = search._box(idx, [1, 0], {}, top_k=1, trace=trace)
+    assert [it["id"] for it in out] == ["r1"]
+    assert trace["packed_sources"] == 0 and trace["source_budget_skipped"] == 0
+    assert [(e["note"], e["status"]) for e in trace["source_pack"]] == [("r1", "top_k")]

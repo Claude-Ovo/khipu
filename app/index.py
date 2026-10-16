@@ -126,8 +126,8 @@ def link_note_sources(rows: list[Row], content: list[set[str]], min_overlap: int
         if r.kind != "note" or not r.request_id:
             continue
         nt = content[r.pos]
-        if len(nt) < min_overlap:
-            continue
+        if not nt or len(nt) < min_overlap:
+            continue  # 空实词集合不连；min_overlap=0 时也不除零（Codex #15 E）
         best, best_key = None, None
         for p in by_req.get(r.request_id, ()):
             n = len(nt & content[p])
