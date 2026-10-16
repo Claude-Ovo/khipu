@@ -239,7 +239,7 @@ Per question against r7: 2 up, 0 down (both on allturn@100). The raw arm's 96 / 
 
 ## Second-shot freeze (10-16): changes after `2cc33fb`
 
-Branch `x2-freeze` carries the 10-15 work over from the experiment branch (`x2-1015`, which sat on top of the multimodal branch) without any multimodal code; it becomes `b3-extract` after the Codex review and the frozen-set regression. Everything below is prompt-side or Search-side; the stored data format is unchanged.
+Branch `x2-freeze` carries the 10-15 work over from the experiment branch (`x2-1015`, which sat on top of the multimodal branch) without any multimodal code. After Codex reviews #15 and #16 and the frozen-set regression below it was fast-forwarded into `b3-extract` and tagged `full-2` (= `6e600db`); commits after the tag on this branch are documentation only. Everything below is prompt-side or Search-side; the stored data format is unchanged.
 
 Determinism and hygiene fixes (`b46a9c7`, three findings of the 10-15 outside audit, all confirmed):
 
@@ -258,6 +258,14 @@ Note-source packing (`24961f6`, `7c6faf7`; Codex review #14). Mechanism: see the
 | `NOTE_SOURCE_PACK`=1 | 94 (4:1) | 92 (5:0) | 98 (2:0) | 2 / 6 | 103 (7:1) | 103 (2:0) | 51 |
 
 In this measurement the notes returned stayed at 20 and the average returned token count did not change: the packed messages displaced tail items, none of them gold evidence on these two sets. That is an observation on these sets, not an invariant of the code: a packed message can be longer than the item it displaces, and it can displace evidence. Answers (qwen-plus proxy, 3 judgements): LME 100 62 → 61, LoCoMo 120 68 → 70, both inside the proxy's noise (about 5 per 100 on identical input). Adopted into `deploy/deploy-v2.sh` (`0be3204`) for the frozen-set regression; if BEAM or PersonaMem drop there, it goes back off.
+
+Frozen-set regression (10-16/17, code `6e600db`, the `deploy-v2.sh` configuration with `NOTE_SOURCE_PACK`=1; Search and answering only, nothing re-ingested):
+
+- LME 100 and LoCoMo 120: coverage identical per question to the 10-15 packing arm above (turn@10 94 / allturn@50 92 / allturn@100 98; any@10 103 / all@100 103), zero flips either way; one LME question's first gold moved down one place and one LoCoMo question's moved up one. The answer layer was not re-run for these two sets: the retrieved lists are the same lists that produced 62 → 61 and 68 → 70 above.
+- BEAM 120 (official rubric pipeline, qwen-plus answers and judge): 0.3234 (summarization 0.259, knowledge update 0.481, event ordering 0.230) against 0.3256 for the 10-15 with-notes arm on `2cc33fb` without packing (0.282 / 0.481 / 0.214). The total differs by 0.27 question-equivalents; per question 20 up, 28 down. The two arms' retrieved sets (50 items per speaker per question) overlap 96 % at the median, 94 % on average, 68 % at worst; the differing items are tail rows displaced by packed sources.
+- PersonaMem 121 (official v1 pipeline): 71.9 % → 71.9 %, 6 up, 6 down.
+
+None of the four sets moved outside the noise band set on 10-15 (a BEAM or PersonaMem total within 7 question-equivalents does not count), so `NOTE_SOURCE_PACK` stays on in the frozen configuration.
 
 Upgrading an instance does not rewrite stored notes: a user who already has x4 notes keeps them and gets x4n notes on later Adds, and both take part in retrieval; evaluation users are new ids, and a replay of an already stored request returns the stored response. Review #15 (10-16) also found that `deploy-v2.sh` wrote `NOTE_SOURCE_PACK=1` followed by a trailing comment, which systemd's `EnvironmentFile` reads as part of the value, so the flag would have been off in the deployed process; fixed, the deploy script's config check now requires `note_source_pack` on, and `tests/test_deploy_env.py` checks the unquoted single-line assignments of the heredoc template the way `EnvironmentFile` reads them (a subset parser, not systemd itself) and regresses the trailing-comment case.
 
