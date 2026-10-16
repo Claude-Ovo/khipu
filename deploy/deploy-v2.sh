@@ -55,7 +55,9 @@ SPAN_ENABLED=0
 SUMMARY_ROUTE_ENABLED=0
 SUMMARY_ROUTE_ALL_SUMMARIES=0
 SUMMARY_NOTES_MAX_RETURNED=0
-NOTE_SOURCE_PACK=1   # 10-15 定：笔记旁贴原话（LME turn@10 91→94、LoCoMo any@10 97→103，答题层无伤），冻结回归再核一遍
+# 10-15 定：笔记旁贴原话（LME turn@10 91→94、LoCoMo any@10 97→103，答题层无伤），冻结回归再核一遍。
+# 赋值行后面不能跟注释：systemd EnvironmentFile 不认行尾 #，整串连注释会成为值，== "1" 就不成立（Codex #15 A）
+NOTE_SOURCE_PACK=1
 NOTE_EVENT_DATES=0
 HOP_ENABLED=0
 EXTRACT_MARK_LATEST=0
@@ -98,8 +100,9 @@ import json, os, sys
 c = json.loads(sys.argv[1])["config"]
 want = {"commit": os.environ["EXPECT_COMMIT"], "extract_model": os.environ["EXPECT_MODEL"], "extract_host": os.environ["EXPECT_HOST"]}
 bad = [f"{k}={c.get(k)!r} wanted {v!r}" for k, v in want.items() if c.get(k) != v]
-bad += [f"{k} should be off" for k in ("forget", "chain", "history", "ledger", "span", "hop", "mark_latest") if c.get(k)]
-bad += [f"{k} should be on" for k in ("extract", "extract_key_set", "notes_in_search", "rerank") if not c.get(k)]
+bad += [f"{k} should be off" for k in ("forget", "chain", "history", "ledger", "span", "hop", "mark_latest",
+                                        "summary_route", "summary_all_summaries", "note_event_dates") if c.get(k)]
+bad += [f"{k} should be on" for k in ("extract", "extract_key_set", "notes_in_search", "rerank", "note_source_pack") if not c.get(k)]
 if c.get("notes_max_returned") != 20: bad.append(f"notes_max_returned={c.get('notes_max_returned')} wanted 20")
 if c.get("fusion_rule") != "legacy": bad.append(f"fusion_rule={c.get('fusion_rule')!r} wanted 'legacy'")
 if bad:

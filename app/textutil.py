@@ -130,26 +130,33 @@ def _valid_day(y: int, mo: int, d: int) -> str | None:
         return None
 
 
-def extract_dates(text: str) -> list[tuple[str, str]]:
-    """返回 [(粒度, 'YYYY-MM-DD' 或 'YYYY-MM')]。非法日历日期（2023-02-30）直接跳过，不能让一个坏日期炸掉整次检索。"""
-    out: list[tuple[str, str]] = []
+def extract_date_spans(text: str) -> list[tuple[str, str, int, int]]:
+    """返回 [(粒度, 'YYYY-MM-DD' 或 'YYYY-MM', 起, 止)]，起止是在 text 里的字符位置。非法日历日期（2023-02-30）直接跳过，
+    不能让一个坏日期炸掉整次检索。月份模式在完整日期里面也会匹到（「20 May 2023」里的「May 2023」），调用方按起止判断它是不是
+    某个完整日期的子匹配（Codex #15 B：按月份值去重会把单独写出的同一个月也删掉）。"""
+    out: list[tuple[str, str, int, int]] = []
     for m in _DATE_PATTERNS[0].finditer(text):
         d = _valid_day(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         if d:
-            out.append(("day", d))
+            out.append(("day", d, m.start(), m.end()))
     for m in _DATE_PATTERNS[1].finditer(text):
         d = _valid_day(int(m.group(3)), _month_index(m.group(1)), int(m.group(2)))
         if d:
-            out.append(("day", d))
+            out.append(("day", d, m.start(), m.end()))
     for m in _DATE_PATTERNS[2].finditer(text):
         d = _valid_day(int(m.group(3)), _month_index(m.group(2)), int(m.group(1)))
         if d:
-            out.append(("day", d))
+            out.append(("day", d, m.start(), m.end()))
     for m in _DATE_PATTERNS[3].finditer(text):
         mo = _month_index(m.group(1))
         if 1 <= mo <= 12:
-            out.append(("month", f"{m.group(2)}-{mo:02d}"))
+            out.append(("month", f"{m.group(2)}-{mo:02d}", m.start(), m.end()))
     return out
+
+
+def extract_dates(text: str) -> list[tuple[str, str]]:
+    """同 extract_date_spans，不带位置（既有调用方：索引的 by_date / by_month、字面词、笔记事件日期）。"""
+    return [(g, d) for g, d, _, _ in extract_date_spans(text)]
 
 
 # ---------- 规矩 ----------
