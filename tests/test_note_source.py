@@ -131,7 +131,12 @@ def test_date_channel_day_beats_month_submatch():
     assert search._date_channel(idx, "What did I do in May 2023?", "temporal") == [0, 1, 2]   # 真正问整月时照旧
     # Codex #15 B：完整日期之外单独写出的同一个月，整月条件保留（旧通道也是 [0, 1, 2]）；异月独立写出的不影响
     assert search._date_channel(idx, "What happened on 2023-05-20 and throughout May 2023?", "temporal") == [0, 1, 2]
-    assert search._date_channel(idx, "On May 20, 2023, and then in June 2023?", "temporal") == [1, 0]
+    assert search._date_channel(idx, "On May 20, 2023, and then in June 2023?", "temporal") == [1, 0]   # 库里没有六月行
+    idx2 = SimpleNamespace(rows=rows + [SimpleNamespace(seq=3)],
+                           by_date={"2023-05-17": {0}, "2023-05-20": {1}, "2023-05-01": {2}, "2023-06-10": {3}},
+                           by_month={"2023-05": {0, 1, 2}, "2023-06": {3}})
+    # 独立写出的异月：六月那行按整月条件入选（距离 0），排在问到的那天后面、三天内的前面
+    assert search._date_channel(idx2, "On May 20, 2023, and then in June 2023?", "temporal") == [1, 3, 0]
 
 
 def test_link_skips_blank_request_id_and_empty_content():

@@ -15,12 +15,16 @@ def _env2_lines(script: str) -> list[str]:
 
 
 def _systemd_env(lines: list[str]) -> dict[str, str]:
-    """systemd.exec EnvironmentFile：整行以 # 或 ; 开头才是注释；赋值行只去首尾空白，值里的 # 原样保留。"""
+    """systemd.exec EnvironmentFile 的一个子集：整行以 # 或 ; 开头才是注释；赋值行只去首尾空白，值里的 # 原样保留。
+    只实现模板目前用到的「无引号、单行、KEY=VALUE」写法；引号、反斜杠转义、续行、没有 = 的行一律拒绝（Codex #16 A：
+    别把没实现的语法当成 systemd 的行为）。"""
     env: dict[str, str] = {}
     for line in lines:
         s = line.strip()
         if not s or s[0] in "#;":
             continue
+        assert "=" in s, f"not an assignment: {line!r}"
+        assert not any(ch in s for ch in "\"'\\"), f"quotes/escapes not supported by this checker: {line!r}"
         k, _, v = s.partition("=")
         env[k.strip()] = v.strip()
     return env
