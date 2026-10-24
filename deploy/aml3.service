@@ -1,5 +1,5 @@
 [Unit]
-Description=khipu mm (AML multimodal track, branch mm, database aml_mm)
+Description=khipu mm-2 (AML multimodal track, branch mm, database aml_mm2, detail low)
 After=network-online.target postgresql.service
 Wants=network-online.target
 

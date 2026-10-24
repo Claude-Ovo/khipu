@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# 多模态赛道实例（2026-10-11，分支 mm）：本机 -> Morrow /srv/aml/app3，独立库 aml_mm，端口 8084，Caddy 路径 /mm/*。
+# 多模态赛道实例（2026-10-11，分支 mm）：本机 -> Morrow /srv/aml/app3，端口 8084，Caddy 路径 /mm/*。
+# 2026-10-24 第二版 mm-2：库换成空的 aml_mm2、图片目录 /srv/aml/mm2/images（主办方 10-17：旧任务记忆不得复用于新评测，评测数据空间要隔离），
+# 图片描述 detail 改 low（10-24 两臂对照：同代码、各自新库、Mem-Gallery 208 题，auto 0.654 / low 0.613；low 每张固定约 3,000 token，auto 均 1.4–1.7 万）。
+# 应用代码与 3fbe817 相同，只改这份部署脚本。旧库 aml_mm 和 /srv/aml/mm/images 不碰，按清理期限另行处理。
 # 不碰 :8080（第一次 Full）和 :8082（文本第二枪）。在本机仓库根目录、分支 mm 上跑：
 #   bash deploy/deploy-mm.sh            彩排：抽取+描述累计 300 万 token 就停（Add 回 503）
 #   bash deploy/deploy-mm.sh full       Full：不限额
@@ -21,18 +24,18 @@ set -euo pipefail
 cd /srv/aml/app3
 /srv/aml/.venv/bin/pip install -q -r requirements.txt
 
-echo "== 库 aml_mm（没有就建，有就不动）"
-if ! sudo -u postgres psql -Atc "SELECT 1 FROM pg_database WHERE datname='aml_mm'" | grep -q 1; then
-  sudo -u postgres createdb -O aml aml_mm
-  sudo -u postgres psql -d aml_mm -c "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
-  echo "created aml_mm"
+echo "== 库 aml_mm2（没有就建，有就不动；mm-1 的 aml_mm 不碰）"
+if ! sudo -u postgres psql -Atc "SELECT 1 FROM pg_database WHERE datname='aml_mm2'" | grep -q 1; then
+  sudo -u postgres createdb -O aml aml_mm2
+  sudo -u postgres psql -d aml_mm2 -c "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
+  echo "created aml_mm2"
 fi
-mkdir -p /srv/aml/mm/images
+mkdir -p /srv/aml/mm2/images
 
 echo "== /srv/aml/.env3（只放覆盖项，没有密钥）"
 umask 077
 cat > /srv/aml/.env3 <<ENV
-DATABASE_URL=postgresql://aml:aml-local-only@127.0.0.1:5432/aml_mm
+DATABASE_URL=postgresql://aml:aml-local-only@127.0.0.1:5432/aml_mm2
 RERANK_ENABLED=1
 RERANK_TOPN=100
 FUSION_RULE=legacy
@@ -48,8 +51,8 @@ NOTES_MAX_RETURNED=20
 NOTES_MAX_CANDIDATES=40
 EXTRACT_REQUEST_TIMEOUT_S=600
 MM_ENABLED=1
-MM_IMAGE_DIR=/srv/aml/mm/images
-MM_DETAIL=auto
+MM_IMAGE_DIR=/srv/aml/mm2/images
+MM_DETAIL=low
 MM_RETURN_IMAGES=5
 MM_RETURN_BYTES=6291456
 MM_GEOCODE=0
@@ -96,6 +99,8 @@ bad += [f"{k} should be on" for k in ("mm", "extract", "extract_key_set", "notes
 bad += [f"{k} should be off" for k in ("forget", "chain", "history", "ledger", "span", "hop", "mark_latest") if c.get(k)]
 if c.get("extract_model") != "gpt-4o-mini-2024-07-18": bad.append(f"extract_model={c.get('extract_model')!r}")
 if c.get("extract_host") != "aihubmix.com": bad.append(f"extract_host={c.get('extract_host')!r}")
+if c.get("mm_detail") != "low": bad.append(f"mm_detail={c.get('mm_detail')!r} (mm-2 must run low)")
+if c.get("mm_geocode"): bad.append("mm_geocode should be off")
 if bad:
     print("!! config check failed:"); [print("   " + b) for b in bad]; sys.exit(1)
 print("config check ok (commit, cap, mm, model, host, flags)")
